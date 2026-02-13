@@ -1,0 +1,91 @@
+# Crypto Quantitative Trading System Configuration
+# ================================================
+
+trading:
+  pairs:
+    - BTC/USDT
+    - ETH/USDT
+    - SOL/USDT
+  timeframes:
+    - 15m
+    - 1h
+    - 4h
+  primary_timeframe: 1h
+
+risk:
+  max_position_pct: 0.10        # Max 10% of portfolio per position
+  max_total_exposure_pct: 0.50  # Max 50% total exposure
+  max_drawdown_pct: 0.15        # Kill switch at 15% drawdown
+  stop_loss_pct: 0.03           # Default 3% stop loss
+  take_profit_pct: 0.06         # Default 6% take profit
+  max_daily_loss_pct: 0.05      # Max 5% daily loss
+  kelly_fraction: 0.25          # Quarter Kelly for safety
+
+models:
+  mean_reversion:
+    enabled: true
+    lookback_window: 100
+    entry_zscore: 2.0
+    exit_zscore: 0.5
+    min_half_life: 5
+    max_half_life: 120
+    cointegration_pvalue: 0.05
+    pairs:
+      - ["BTC/USDT", "ETH/USDT"]
+
+  momentum:
+    enabled: true
+    fast_ema: 12
+    slow_ema: 26
+    signal_ema: 9
+    adx_threshold: 25.0
+    atr_multiplier: 2.0
+    garch_vol_threshold: 0.8    # Percentile threshold for vol filter
+
+  ml_model:
+    enabled: true
+    algorithm: xgboost           # xgboost or lightgbm
+    prediction_horizon: 12       # Bars ahead
+    n_estimators: 500
+    max_depth: 6
+    learning_rate: 0.05
+    min_samples_train: 2000
+    retrain_interval_hours: 24
+    walk_forward_windows: 5
+    purge_gap: 3                 # Bars to purge between train/test
+
+  ensemble:
+    weights:
+      mean_reversion: 0.33
+      momentum: 0.33
+      ml_model: 0.34
+    min_agreement: 0.6           # Min weighted agreement to trade
+    confidence_scaling: true     # Scale position by confidence
+
+data:
+  storage_path: ./data
+  db_path: ./data/crypto_trader.duckdb
+  cache_days: 365
+  update_interval_seconds: 60
+
+execution:
+  mode: paper                    # paper | live
+  paper:
+    initial_capital: 100000.0
+    slippage_bps: 5              # 5 basis points slippage
+    commission_bps: 10           # 10 basis points commission
+    latency_ms: 100              # Simulated latency
+
+learning:
+  retrain_schedule: "0 */6 * * *"  # Every 6 hours (cron format)
+  model_save_path: ./models
+  min_training_samples: 2000
+  validation_split: 0.2
+  early_stopping_rounds: 50
+
+logging:
+  level: INFO
+  file: ./logs/crypto_trader.log
+  max_bytes: 10485760            # 10MB
+  backup_count: 5
+  format: "%(asctime)s | %(name)s | %(levelname)s | %(message)s"

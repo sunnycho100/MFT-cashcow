@@ -1,0 +1,86 @@
+2026-02-13 10:28:28,356 | crypto_trader.data.fetcher | INFO | Fetching BTC/USDT 1h data (days=90)
+2026-02-13 10:28:30,215 | crypto_trader.data.fetcher | WARNING | yfinance fetch failed: pyarrow is required for converting a pandas dataframe to Polars, unless each of its columns is a simple numpy-backed one (e.g. 'int64', 'bool', 'float32' - not 'Int64'). Generating synthetic data.
+2026-02-13 10:28:30,215 | crypto_trader.data.fetcher | INFO | Generating synthetic data for BTC/USDT
+2026-02-13 10:28:30,228 | crypto_trader.data.fetcher | INFO | Fetched 2160 rows for BTC/USDT
+2026-02-13 10:28:30,228 | crypto_trader.data.fetcher | INFO | Fetching ETH/USDT 1h data (days=90)
+2026-02-13 10:28:30,520 | crypto_trader.data.fetcher | WARNING | yfinance fetch failed: pyarrow is required for converting a pandas dataframe to Polars, unless each of its columns is a simple numpy-backed one (e.g. 'int64', 'bool', 'float32' - not 'Int64'). Generating synthetic data.
+2026-02-13 10:28:30,520 | crypto_trader.data.fetcher | INFO | Generating synthetic data for ETH/USDT
+2026-02-13 10:28:30,529 | crypto_trader.data.fetcher | INFO | Fetched 2160 rows for ETH/USDT
+2026-02-13 10:28:30,529 | crypto_trader.data.fetcher | INFO | Fetching SOL/USDT 1h data (days=90)
+2026-02-13 10:28:30,773 | crypto_trader.data.fetcher | WARNING | yfinance fetch failed: pyarrow is required for converting a pandas dataframe to Polars, unless each of its columns is a simple numpy-backed one (e.g. 'int64', 'bool', 'float32' - not 'Int64'). Generating synthetic data.
+2026-02-13 10:28:30,774 | crypto_trader.data.fetcher | INFO | Generating synthetic data for SOL/USDT
+2026-02-13 10:28:30,781 | crypto_trader.data.fetcher | INFO | Fetched 2160 rows for SOL/USDT
+2026-02-13 10:28:31,831 | crypto_trader.models.mean_reversion | INFO | Pair BTC/USDT_ETH/USDT: hedge_ratio=-1.0071, cointegrated=True, p=0.0270
+2026-02-13 10:28:31,831 | crypto_trader.models.mean_reversion | INFO | Mean reversion model fitted. Half-lives: {'BTC/USDT_ETH/USDT': 91.176885009981}
+2026-02-13 10:28:32,021 | crypto_trader.models.momentum | INFO | GARCH fitted: omega=0.164248, alpha=0.0000, beta=0.0002
+2026-02-13 10:28:33,881 | crypto_trader.models.ensemble | INFO | Ensemble initialized with models: ['mean_reversion', 'momentum', 'ml_model']
+2026-02-13 10:28:33,949 | crypto_trader.models.mean_reversion | INFO | Pair BTC/USDT_ETH/USDT: hedge_ratio=-1.0071, cointegrated=True, p=0.0270
+2026-02-13 10:28:33,949 | crypto_trader.models.mean_reversion | INFO | Mean reversion model fitted. Half-lives: {'BTC/USDT_ETH/USDT': 91.176885009981}
+2026-02-13 10:28:33,949 | crypto_trader.models.ensemble | INFO | Sub-model 'mean_reversion' fitted successfully
+2026-02-13 10:28:33,954 | crypto_trader.models.momentum | INFO | GARCH fitted: omega=0.164248, alpha=0.0000, beta=0.0002
+2026-02-13 10:28:33,954 | crypto_trader.models.ensemble | INFO | Sub-model 'momentum' fitted successfully
+2026-02-13 10:28:33,992 | crypto_trader.models.ensemble | ERROR | Failed to fit sub-model 'ml_model': 
+XGBoost Library (libxgboost.dylib) could not be loaded.
+Likely causes:
+  * OpenMP runtime is not installed
+    - vcomp140.dll or libgomp-1.dll for Windows
+    - libomp.dylib for Mac OSX
+    - libgomp.so for Linux and other UNIX-like OSes
+    Mac OSX users: Run `brew install libomp` to install OpenMP runtime.
+
+  * You are running 32-bit Python on a 64-bit OS
+
+Error message(s): ["dlopen(/Users/sunny/Library/Python/3.9/lib/python/site-packages/xgboost/lib/libxgboost.dylib, 0x0006): Library not loaded: @rpath/libomp.dylib\n  Referenced from: <89AD948E-E564-3266-867D-7AF89D6488F0> /Users/sunny/Library/Python/3.9/lib/python/site-packages/xgboost/lib/libxgboost.dylib\n  Reason: tried: '/opt/homebrew/opt/libomp/lib/libomp.dylib' (no such file), '/System/Volumes/Preboot/Cryptexes/OS/opt/homebrew/opt/libomp/lib/libomp.dylib' (no such file), '/opt/homebrew/opt/libomp/lib/libomp.dylib' (no such file), '/System/Volumes/Preboot/Cryptexes/OS/opt/homebrew/opt/libomp/lib/libomp.dylib' (no such file)"]
+
+2026-02-13 10:29:34,679 | crypto_trader.data.fetcher | INFO | Fetching BTC/USDT 1h data (days=90)
+2026-02-13 10:29:35,070 | crypto_trader.data.fetcher | WARNING | yfinance fetch failed: pyarrow is required for converting a pandas dataframe to Polars, unless each of its columns is a simple numpy-backed one (e.g. 'int64', 'bool', 'float32' - not 'Int64'). Generating synthetic data.
+2026-02-13 10:29:35,071 | crypto_trader.data.fetcher | INFO | Generating synthetic data for BTC/USDT
+2026-02-13 10:29:35,080 | crypto_trader.data.fetcher | INFO | Fetched 2160 rows for BTC/USDT
+2026-02-13 10:29:35,080 | crypto_trader.data.fetcher | INFO | Fetching ETH/USDT 1h data (days=90)
+2026-02-13 10:29:35,224 | crypto_trader.data.fetcher | WARNING | yfinance fetch failed: pyarrow is required for converting a pandas dataframe to Polars, unless each of its columns is a simple numpy-backed one (e.g. 'int64', 'bool', 'float32' - not 'Int64'). Generating synthetic data.
+2026-02-13 10:29:35,224 | crypto_trader.data.fetcher | INFO | Generating synthetic data for ETH/USDT
+2026-02-13 10:29:35,232 | crypto_trader.data.fetcher | INFO | Fetched 2160 rows for ETH/USDT
+2026-02-13 10:29:35,232 | crypto_trader.data.fetcher | INFO | Fetching SOL/USDT 1h data (days=90)
+2026-02-13 10:29:35,335 | crypto_trader.data.fetcher | WARNING | yfinance fetch failed: pyarrow is required for converting a pandas dataframe to Polars, unless each of its columns is a simple numpy-backed one (e.g. 'int64', 'bool', 'float32' - not 'Int64'). Generating synthetic data.
+2026-02-13 10:29:35,335 | crypto_trader.data.fetcher | INFO | Generating synthetic data for SOL/USDT
+2026-02-13 10:29:35,343 | crypto_trader.data.fetcher | INFO | Fetched 2160 rows for SOL/USDT
+2026-02-13 10:29:35,463 | crypto_trader.models.mean_reversion | INFO | Pair BTC/USDT_ETH/USDT: hedge_ratio=0.6005, cointegrated=False, p=0.1198
+2026-02-13 10:29:35,463 | crypto_trader.models.mean_reversion | INFO | Mean reversion model fitted. Half-lives: {'BTC/USDT_ETH/USDT': 189.09958335084144}
+2026-02-13 10:29:35,478 | crypto_trader.models.momentum | INFO | GARCH fitted: omega=0.161468, alpha=0.0265, beta=0.0000
+2026-02-13 10:29:36,040 | crypto_trader.models.ml_model | INFO | Top 5 features: [('price_rel_ma_50', 0.08761005848646164), ('volatility_10', 0.08551713824272156), ('rsi_28', 0.08479961007833481), ('price_rel_ma_20', 0.08141984790563583), ('volatility_50', 0.07502426952123642)]
+2026-02-13 10:29:36,040 | crypto_trader.models.ml_model | INFO | ML model trained on 2098 samples with 15 features
+2026-02-13 10:29:36,077 | crypto_trader.models.ensemble | INFO | Ensemble initialized with models: ['mean_reversion', 'momentum', 'ml_model']
+2026-02-13 10:29:36,123 | crypto_trader.models.mean_reversion | INFO | Pair BTC/USDT_ETH/USDT: hedge_ratio=0.6005, cointegrated=False, p=0.1198
+2026-02-13 10:29:36,123 | crypto_trader.models.mean_reversion | INFO | Mean reversion model fitted. Half-lives: {'BTC/USDT_ETH/USDT': 189.09958335084144}
+2026-02-13 10:29:36,124 | crypto_trader.models.ensemble | INFO | Sub-model 'mean_reversion' fitted successfully
+2026-02-13 10:29:36,129 | crypto_trader.models.momentum | INFO | GARCH fitted: omega=0.161468, alpha=0.0265, beta=0.0000
+2026-02-13 10:29:36,129 | crypto_trader.models.ensemble | INFO | Sub-model 'momentum' fitted successfully
+2026-02-13 10:29:36,366 | crypto_trader.models.ml_model | INFO | Top 5 features: [('price_rel_ma_50', 0.08761005848646164), ('volatility_10', 0.08551713824272156), ('rsi_28', 0.08479961007833481), ('price_rel_ma_20', 0.08141984790563583), ('volatility_50', 0.07502426952123642)]
+2026-02-13 10:29:36,366 | crypto_trader.models.ml_model | INFO | ML model trained on 2098 samples with 15 features
+2026-02-13 10:29:36,366 | crypto_trader.models.ensemble | INFO | Sub-model 'ml_model' fitted successfully
+2026-02-13 15:58:10,123 | crypto_trader.data.fetcher | INFO | Fetching BTC/USDT 1h data (days=90)
+2026-02-13 15:58:10,666 | crypto_trader.data.fetcher | WARNING | yfinance fetch failed: pyarrow is required for converting a pandas dataframe to Polars, unless each of its columns is a simple numpy-backed one (e.g. 'int64', 'bool', 'float32' - not 'Int64'). Generating synthetic data.
+2026-02-13 15:58:10,666 | crypto_trader.data.fetcher | INFO | Generating synthetic data for BTC/USDT
+2026-02-13 15:58:10,701 | crypto_trader.data.fetcher | INFO | Fetched 2160 rows for BTC/USDT
+2026-02-13 15:58:10,701 | crypto_trader.data.fetcher | INFO | Fetching ETH/USDT 1h data (days=90)
+2026-02-13 15:58:10,803 | crypto_trader.data.fetcher | WARNING | yfinance fetch failed: pyarrow is required for converting a pandas dataframe to Polars, unless each of its columns is a simple numpy-backed one (e.g. 'int64', 'bool', 'float32' - not 'Int64'). Generating synthetic data.
+2026-02-13 15:58:10,803 | crypto_trader.data.fetcher | INFO | Generating synthetic data for ETH/USDT
+2026-02-13 15:58:10,809 | crypto_trader.data.fetcher | INFO | Fetched 2160 rows for ETH/USDT
+2026-02-13 15:58:10,809 | crypto_trader.data.fetcher | INFO | Fetching SOL/USDT 1h data (days=90)
+2026-02-13 15:58:10,957 | crypto_trader.data.fetcher | WARNING | yfinance fetch failed: pyarrow is required for converting a pandas dataframe to Polars, unless each of its columns is a simple numpy-backed one (e.g. 'int64', 'bool', 'float32' - not 'Int64'). Generating synthetic data.
+2026-02-13 15:58:10,957 | crypto_trader.data.fetcher | INFO | Generating synthetic data for SOL/USDT
+2026-02-13 15:58:10,963 | crypto_trader.data.fetcher | INFO | Fetched 2160 rows for SOL/USDT
+2026-02-13 15:58:11,088 | crypto_trader.models.mean_reversion | INFO | Pair BTC/USDT_ETH/USDT: hedge_ratio=0.0444, cointegrated=False, p=0.6272
+2026-02-13 15:58:11,088 | crypto_trader.models.mean_reversion | INFO | Mean reversion model fitted. Half-lives: {'BTC/USDT_ETH/USDT': 352.4220132692458}
+2026-02-13 15:58:11,109 | crypto_trader.models.momentum | INFO | GARCH fitted: omega=0.016322, alpha=0.0000, beta=0.9010
+2026-02-13 15:58:11,486 | crypto_trader.models.ml_model | INFO | Top 5 features: [('volatility_50', 0.08858055621385574), ('price_rel_ma_50', 0.0871482640504837), ('return_20', 0.08199850469827652), ('volatility_20', 0.08071981370449066), ('rsi_28', 0.07720988988876343)]
+2026-02-13 15:58:11,486 | crypto_trader.models.ml_model | INFO | ML model trained on 2098 samples with 15 features
+2026-02-13 15:58:11,524 | crypto_trader.models.ensemble | INFO | Ensemble initialized with models: ['mean_reversion', 'momentum', 'ml_model']
+2026-02-13 15:58:11,570 | crypto_trader.models.mean_reversion | INFO | Pair BTC/USDT_ETH/USDT: hedge_ratio=0.0444, cointegrated=False, p=0.6272
+2026-02-13 15:58:11,570 | crypto_trader.models.mean_reversion | INFO | Mean reversion model fitted. Half-lives: {'BTC/USDT_ETH/USDT': 352.4220132692458}
+2026-02-13 15:58:11,570 | crypto_trader.models.ensemble | INFO | Sub-model 'mean_reversion' fitted successfully
+2026-02-13 15:58:11,578 | crypto_trader.models.momentum | INFO | GARCH fitted: omega=0.016322, alpha=0.0000, beta=0.9010
+2026-02-13 15:58:11,578 | crypto_trader.models.ensemble | INFO | Sub-model 'momentum' fitted successfully
+2026-02-13 15:58:11,863 | crypto_trader.models.ml_model | INFO | Top 5 features: [('volatility_50', 0.08858055621385574), ('price_rel_ma_50', 0.0871482640504837), ('return_20', 0.08199850469827652), ('volatility_20', 0.08071981370449066), ('rsi_28', 0.07720988988876343)]
+2026-02-13 15:58:11,863 | crypto_trader.models.ml_model | INFO | ML model trained on 2098 samples with 15 features
+2026-02-13 15:58:11,863 | crypto_trader.models.ensemble | INFO | Sub-model 'ml_model' fitted successfully
