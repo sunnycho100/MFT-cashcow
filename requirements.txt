@@ -16,9 +16,11 @@ ta>=0.11.0
 
 # Configuration
 pyyaml>=6.0
+python-dotenv>=1.0.0
 
-# Data fetching (placeholder - will use ccxt later)
+# Market data / execution
 yfinance>=0.2.30
+ccxt>=4.2.0
 
 # Utilities
 click>=8.1.0

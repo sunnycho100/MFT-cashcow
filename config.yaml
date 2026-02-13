@@ -68,8 +68,18 @@ data:
   cache_days: 365
   update_interval_seconds: 60
 
+exchange:
+  id: coinbase                  # coinbase | kraken | gemini
+  mode: paper                   # paper | live
+  testnet: true                 # use sandbox endpoints where available
+  api_key_env: EXCHANGE_API_KEY
+  api_secret_env: EXCHANGE_API_SECRET
+  rate_limit: true              # respect exchange rate limits
+
 execution:
   mode: paper                    # paper | live
+  exchange_mode: paper           # separate exchange mode
+  dry_run: true                  # safety: simulate orders in paper mode
   paper:
     initial_capital: 100000.0
     slippage_bps: 5              # 5 basis points slippage

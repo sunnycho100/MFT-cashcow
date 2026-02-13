@@ -6,6 +6,7 @@ Runs all trading models end-to-end and serves a live web dashboard on port 8888.
 
 import sys, os, json, threading, time, traceback
 from datetime import datetime
+import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -185,6 +186,21 @@ def run_tests():
         state["status"] = "error"
         state["errors"].append(traceback.format_exc())
         state["current_step"] = f"FATAL: {e}"
+
+
+def convert_numpy(obj):
+    """Convert numpy types to Python types for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: convert_numpy(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy(item) for item in obj]
+    elif isinstance(obj, (np.integer, np.floating)):
+        return obj.item()
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return obj
 
 
 # ── Flask app ────────────────────────────────────────────────────────────────
@@ -516,7 +532,7 @@ def index():
 
 @app.route("/api/state")
 def api_state():
-    return jsonify(state)
+    return jsonify(convert_numpy(state))
 
 
 if __name__ == "__main__":

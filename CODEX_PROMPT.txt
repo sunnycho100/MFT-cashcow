@@ -1,0 +1,42 @@
+You are implementing exchange integration and documentation for a crypto quantitative trading system.
+
+**Project Location:** /Users/sunny/.openclaw/workspace/crypto-trader/
+
+**Your Tasks:**
+1. Read `/Users/sunny/.openclaw/workspace/crypto-trader/CODEX_SPEC.md` thoroughly
+2. Implement ALL items listed in the spec
+3. Follow the code style and structure already established in the project
+4. Create a professional, minimal README.md (NOT AI-generated looking - see spec for style guide)
+
+**Key Constraints:**
+- Use CCXT library for exchange connectivity
+- Start with Coinbase Advanced Trade (paper/sandbox mode)
+- Never commit API keys - use .env file
+- Keep existing code working - don't break the current models
+- Paper trading only - no live execution yet
+
+**Implementation Order:**
+1. Exchange connector (`src/execution/exchange.py`)
+2. Update data fetcher to support exchange data
+3. Add exchange config to `config.yaml`
+4. Create `.env.example` template
+5. Update `requirements.txt`
+6. Write professional README.md
+7. Create paper trading script (`scripts/run_paper.py`)
+
+**Testing:**
+After each major component, run the existing test dashboard to make sure nothing broke:
+```bash
+cd /Users/sunny/.openclaw/workspace/crypto-trader
+python3 test_dashboard.py
+```
+
+**README Style:**
+- Clear, minimal sections
+- No excessive emoji or hype language
+- Professional tone (production trading system, not a demo)
+- Code examples where helpful
+- Real installation/setup instructions
+- Proper disclaimers about risk
+
+When you're done, provide a summary of what was implemented and where to find the key files.

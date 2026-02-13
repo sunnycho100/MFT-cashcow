@@ -52,12 +52,14 @@ class DataFetcher:
         config: Configuration dictionary with data settings.
     """
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict = None, use_exchange: bool = False):
         self.config = config or {}
         data_cfg = self.config.get("data", {})
         self.cache_days = data_cfg.get("cache_days", 365)
         self.storage_path = Path(data_cfg.get("storage_path", "./data"))
         self.storage_path.mkdir(parents=True, exist_ok=True)
+        self.use_exchange = bool(use_exchange or data_cfg.get("use_exchange", False))
+        self.exchange_connector = None
 
     def fetch(
         self,
@@ -79,13 +81,27 @@ class DataFetcher:
         Returns:
             Polars DataFrame with columns: timestamp, open, high, low, close, volume.
         """
-        logger.info(f"Fetching {pair} {timeframe} data (days={days})")
+        logger.info(
+            "Fetching %s %s data (days=%s, source=%s)",
+            pair,
+            timeframe,
+            days,
+            "exchange" if self.use_exchange else "yfinance",
+        )
 
-        try:
-            df = self._fetch_yfinance(pair, timeframe, start, end, days)
-        except Exception as e:
-            logger.warning(f"yfinance fetch failed: {e}. Generating synthetic data.")
-            df = self._generate_synthetic_data(pair, timeframe, days)
+        df = pl.DataFrame()
+        if self.use_exchange:
+            try:
+                df = self._fetch_exchange(pair, timeframe, start, end, days)
+            except Exception as e:
+                logger.warning(f"Exchange fetch failed: {e}. Falling back to yfinance.")
+
+        if len(df) == 0:
+            try:
+                df = self._fetch_yfinance(pair, timeframe, start, end, days)
+            except Exception as e:
+                logger.warning(f"yfinance fetch failed: {e}. Generating synthetic data.")
+                df = self._generate_synthetic_data(pair, timeframe, days)
 
         if df is not None and len(df) > 0:
             logger.info(f"Fetched {len(df)} rows for {pair}")
@@ -203,6 +219,42 @@ class DataFetcher:
                 df = df.with_columns(pl.col(col).cast(pl.Float64))
 
         return df
+
+    def _fetch_exchange(
+        self,
+        pair: str,
+        timeframe: str,
+        start: Optional[str],
+        end: Optional[str],
+        days: int,
+    ) -> pl.DataFrame:
+        """Fetch OHLCV data from configured exchange via CCXT."""
+        if self.exchange_connector is None:
+            from ..execution.exchange import ExchangeConnector
+
+            self.exchange_connector = ExchangeConnector(self.config)
+
+        limit = self._days_to_limit(timeframe=timeframe, days=days)
+
+        # Current implementation relies on exchange-side latest bars.
+        # Start/end are reserved for future pagination support.
+        _ = start
+        _ = end
+        return self.exchange_connector.fetch_ohlcv(pair, timeframe=timeframe, limit=limit)
+
+    @staticmethod
+    def _days_to_limit(timeframe: str, days: int) -> int:
+        periods_map = {
+            "1m": 24 * 60,
+            "5m": 24 * 12,
+            "15m": 24 * 4,
+            "30m": 24 * 2,
+            "1h": 24,
+            "4h": 6,
+            "1d": 1,
+        }
+        periods_per_day = periods_map.get(timeframe, 24)
+        return max(20, min(days * periods_per_day, 5000))
 
     def _resample_to_4h(self, df: pl.DataFrame) -> pl.DataFrame:
         """Resample 1h data to 4h candles.
