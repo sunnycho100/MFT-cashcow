@@ -1,0 +1,46 @@
+Implement Option A: Hybrid Deep Learning + Reinforcement Learning Architecture for crypto trading.
+
+Full technical specification: See CODEX_SPEC_OPTION_A.md in this directory.
+
+Key requirements:
+1. Create 5 new model files:
+   - src/models/temporal_fusion_transformer.py (TFT for multi-horizon forecasting)
+   - src/models/lstm_cnn_hybrid.py (Pattern recognition + sequential)
+   - src/models/sentiment_analyzer.py (Placeholder for now)
+   - src/models/reinforcement_learning.py (PPO agent)
+   - src/models/enhanced_ensemble.py (Intelligent signal fusion)
+
+2. Create training pipeline:
+   - scripts/train_deep_models.py (main orchestrator)
+   - Support --mode full/quick/resume
+   - Comprehensive logging to logs/training/
+   - Save checkpoints to checkpoints/ directory
+
+3. Update existing files:
+   - requirements.txt (add PyTorch, pytorch-forecasting, stable-baselines3, etc.)
+   - config.yaml (add deep_learning section)
+   - src/models/__init__.py (export new models)
+
+4. Integration requirements:
+   - Must work with existing data fetcher (src/data/fetcher.py)
+   - Generate signals compatible with current dashboard format
+   - Use M4 Mac GPU (Metal Performance Shaders - "mps" device)
+   - Graceful fallback to CPU if GPU unavailable
+
+5. Training parameters:
+   - TFT: 100 epochs, 3-4 hour training time
+   - LSTM-CNN: 50 epochs, 1-2 hour training time  
+   - RL Agent: 500k timesteps, 2-4 hour training time
+   - Total: 6-12 hours for full training
+
+6. Code quality:
+   - PyTorch best practices
+   - Modular, clean code
+   - Comprehensive error handling
+   - Verbose logging for monitoring
+   - Type hints
+   - Docstrings for all classes/methods
+
+Please read CODEX_SPEC_OPTION_A.md for complete architectural details, then implement all components.
+
+Start with the model files, then the training script, then integration updates.

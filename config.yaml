@@ -99,3 +99,54 @@ logging:
   max_bytes: 10485760            # 10MB
   backup_count: 5
   format: "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
+
+# Deep Learning Models (Option A)
+deep_learning:
+  enabled: true
+
+  # Device config
+  device: "mps"  # "mps" for M4 Mac, "cuda" for NVIDIA, "cpu" fallback
+
+  # Temporal Fusion Transformer
+  tft:
+    enabled: true
+    context_length: 168  # hours
+    prediction_horizons: [1, 4, 24]  # hours
+    hidden_size: 128
+    attention_heads: 4
+    dropout: 0.1
+    learning_rate: 0.001
+    batch_size: 64
+    epochs: 100
+
+  # LSTM-CNN Hybrid
+  lstm_cnn:
+    enabled: true
+    sequence_length: 48  # hours
+    lstm_hidden: 128
+    lstm_layers: 2
+    dropout: 0.2
+    learning_rate: 0.0001
+    batch_size: 128
+    epochs: 50
+
+  # Reinforcement Learning
+  rl_agent:
+    enabled: true
+    algorithm: "PPO"
+    total_timesteps: 500000
+    learning_rate: 0.0003
+    gamma: 0.99
+    n_steps: 2048
+    batch_size: 64
+    n_epochs: 10
+
+  # Ensemble weights
+  ensemble:
+    weights:
+      tft: 0.25
+      lstm_cnn: 0.20
+      rl_agent: 0.30
+      mean_reversion: 0.10
+      momentum: 0.10
+      ml_model: 0.05
