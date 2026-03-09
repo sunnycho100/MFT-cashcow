@@ -1,4 +1,4 @@
-# V2 — Feature-First Gradient Boosting (Profitability Update)
+# V2.1 — Aggressive Alpha Configuration
 # ============================================================
 
 trading:
@@ -16,40 +16,41 @@ data:
   exchange: coinbase
 
 risk:
-  max_position_pct: 0.10
-  max_total_exposure_pct: 0.50
-  max_drawdown_pct: 0.15
-  kelly_fraction: 0.25
+  max_position_pct: 0.30       # ↑ from 0.10 — more aggressive
+  max_total_exposure_pct: 0.90 # ↑ allow near-full capital usage across pairs
+  max_drawdown_pct: 0.20
+  kelly_fraction: 0.50         # ↑ from 0.25 — half-Kelly for growth
 
 models:
   lgbm:
     enabled: true
-    prediction_horizon: 12    # bars ahead (12h with 1h candles)
-    direction_threshold: 0.005  # legacy — kept for reference
-    # Triple barrier parameters (ATR-scaled)
+    prediction_horizon: 24    # look further ahead for bigger moves
+    direction_threshold: 0.005
+    # Triple barrier parameters — ASYMMETRIC R:R
     barriers:
-      take_profit_atr: 1.5    # TP = 1.5 × ATR_14
-      stop_loss_atr: 1.5      # SL = 1.5 × ATR_14
-      max_hold_bars: 12       # vertical barrier
+      take_profit_atr: 2.5    # ↑ TP = 2.5 × ATR — let winners run
+      stop_loss_atr: 1.0      # ↓ SL = 1.0 × ATR — cut losses fast
+      max_hold_bars: 24       # ↑ longer hold for bigger moves
     # LightGBM hyperparameters
-    n_estimators: 500
-    max_depth: 6
-    num_leaves: 31
-    learning_rate: 0.05
-    min_child_samples: 50
+    n_estimators: 1000         # ↑ more trees
+    max_depth: 8               # ↑ deeper trees for complex patterns
+    num_leaves: 63             # ↑ more leaves
+    learning_rate: 0.03        # ↓ slower learning with more trees
+    min_child_samples: 30      # ↓ allow finer splits
     subsample: 0.8
-    colsample_bytree: 0.7
+    colsample_bytree: 0.6     # ↓ more regularization with more features
     reg_alpha: 0.1
     reg_lambda: 1.0
 
 backtest:
-  confidence_threshold: 0.40   # above model optimal threshold 
-  long_only: true              # only trade LONG (model predicts long entries)
-  tp_atr_mult: 1.5             # ALIGNED with label TP
-  sl_atr_mult: 1.5             # ALIGNED with label SL
-  max_hold_bars: 12            # ALIGNED with label timeout
-  trailing_activate_atr: 0.0   # disabled
-  trailing_distance_atr: 0.0   # disabled
+  confidence_threshold: 0.45
+  long_only: true
+  tp_atr_mult: 2.5             # ALIGNED with label TP
+  sl_atr_mult: 1.0             # ALIGNED with label SL
+  max_hold_bars: 24            # ALIGNED with label timeout
+  trailing_activate_atr: 1.5   # activate trail after +1.5 ATR profit
+  trailing_distance_atr: 0.8   # trail 0.8 ATR behind peak
+  max_position_pct: 0.30       # explicit in backtest
 
 validation:
   n_splits: 5

@@ -1,4 +1,7 @@
-"""Backtester — event-driven with ATR exits, trailing stop, Kelly sizing."""
+"""Backtester — event-driven with ATR exits, trailing stop, Kelly sizing.
+
+v2.1: Multi-pair portfolio backtesting, compounding equity, aggressive sizing.
+"""
 
 from __future__ import annotations
 
@@ -15,16 +18,16 @@ def run_backtest(
     initial_capital: float = 100_000.0,
     fee_rate: float = 0.001,            # 10 bps taker
     slippage_bps: float = 5.0,          # 5 bps slippage
-    max_position_pct: float = 0.10,     # base position size
-    confidence_threshold: float = 0.60,  # min prob to trade
+    max_position_pct: float = 0.30,     # base position size (↑ from 0.10)
+    confidence_threshold: float = 0.45,  # min prob to trade
     # ATR-based exit parameters
-    tp_atr_mult: float = 3.0,           # take-profit = 3 × ATR
-    sl_atr_mult: float = 2.0,           # stop-loss = 2 × ATR
-    max_hold_bars: int = 12,            # time exit after N bars
+    tp_atr_mult: float = 2.5,           # take-profit = 2.5 × ATR
+    sl_atr_mult: float = 1.0,           # stop-loss = 1.0 × ATR
+    max_hold_bars: int = 24,            # time exit after N bars
     trailing_activate_atr: float = 1.5,  # activate trailing stop after +1.5 ATR
-    trailing_distance_atr: float = 1.0,  # trail at 1.0 ATR below peak
-    kelly_fraction: float = 0.25,       # fraction of Kelly for position sizing
-    long_only: bool = False,            # if True, only take LONG signals
+    trailing_distance_atr: float = 0.8,  # trail at 0.8 ATR below peak
+    kelly_fraction: float = 0.50,       # fraction of Kelly for position sizing
+    long_only: bool = True,             # if True, only take LONG signals
 ) -> dict:
     """Event-driven backtest with proper exit discipline.
 
@@ -37,12 +40,18 @@ def run_backtest(
     Position sizing: Kelly-scaled by confidence
       size = base × kelly_frac × (confidence - threshold) / (1 - threshold)
 
-    Required columns: close, atr_14, pred_class, pred_prob_up, pred_prob_down
+    Required columns: close, atr_14, pred_long_prob
+    Uses pred_long_prob directly (no pred_class mapping needed).
     """
     close = df["close"].to_numpy()
-    pred = df["pred_class"].to_numpy()
-    prob_up = df["pred_prob_up"].to_numpy()
-    prob_down = df["pred_prob_down"].to_numpy()
+    
+    # Use pred_long_prob directly — this is the model's confidence
+    if "pred_long_prob" in df.columns:
+        prob_long = df["pred_long_prob"].to_numpy()
+    elif "pred_prob_up" in df.columns:
+        prob_long = df["pred_prob_up"].to_numpy()
+    else:
+        raise ValueError("Need pred_long_prob or pred_prob_up column")
 
     # ATR for dynamic exits
     if "atr_14" in df.columns:
@@ -195,14 +204,16 @@ def run_backtest(
 
         # --- Entry logic (only if flat) ---
         if not in_trade:
-            conf_up = prob_up[i]
-            conf_down = prob_down[i]
+            long_conf = prob_long[i]
+            short_conf = 1.0 - prob_long[i]
 
-            if pred[i] == 2 and conf_up >= confidence_threshold:
-                _open_trade(i, 1.0, conf_up)
+            # LONG entry: prob exceeds threshold directly
+            if long_conf >= confidence_threshold:
+                _open_trade(i, 1.0, long_conf)
                 position[i] = 1.0
-            elif not long_only and pred[i] == 0 and conf_down >= confidence_threshold:
-                _open_trade(i, -1.0, conf_down)
+            # SHORT entry: only if not long_only AND prob is very low (bearish)
+            elif not long_only and short_conf >= confidence_threshold:
+                _open_trade(i, -1.0, short_conf)
                 position[i] = -1.0
             else:
                 position[i] = 0.0
