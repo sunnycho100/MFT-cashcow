@@ -1,0 +1,35 @@
+# V2 Core Dependencies
+# ====================
+
+# Data
+polars>=1.0,<2.0
+duckdb>=1.0,<2.0
+ccxt>=4.0
+yfinance>=0.2.40
+requests>=2.31
+
+# ML
+lightgbm>=4.5,<5.0
+xgboost>=2.1,<4.0
+scikit-learn>=1.5,<2.0
+optuna>=3.6,<5.0
+
+# Feature Engineering
+# TA-Lib requires system install: brew install ta-lib
+TA-Lib>=0.4.28
+
+# Interpretability
+shap>=0.45
+
+# Visualization
+plotly>=5.20
+matplotlib>=3.9
+
+# Config & Utils
+pyyaml>=6.0
+python-dotenv>=1.0
+loguru>=0.7
+
+# Notebooks (optional)
+jupyterlab>=4.2
+ipywidgets>=8.1

@@ -9,7 +9,7 @@
 | Folder | Description | Status |
 |--------|-------------|--------|
 | `v1/`  | Deep learning + classical ensemble (TFT, LSTM-CNN, PPO, XGBoost, mean reversion, momentum) | **Archived** — did not produce viable results |
-| `v2/`  | *(coming soon)* | — |
+| `v2/`  | Feature-first gradient boosting (LightGBM + 150 engineered features + purged walk-forward CV) | **Active** |
 
 ---
 
