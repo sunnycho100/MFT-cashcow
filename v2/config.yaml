@@ -1,5 +1,5 @@
-# V2 — Feature-First Gradient Boosting
-# =====================================
+# V2 — Feature-First Gradient Boosting (Profitability Update)
+# ============================================================
 
 trading:
   pairs:
@@ -11,42 +11,51 @@ trading:
 data:
   storage_path: ./data
   db_path: ./data/v2.duckdb
-  # How much data to fetch (days)
   fetch_days: 1095          # ~3 years
-  # How much data to use for training (days) — start small, iterate fast
   train_days: 365            # 1 year
-  # Exchange for CCXT fetching (public data, no API key needed)
   exchange: coinbase
 
 risk:
   max_position_pct: 0.10
   max_total_exposure_pct: 0.50
   max_drawdown_pct: 0.15
-  stop_loss_pct: 0.03
-  take_profit_pct: 0.06
   kelly_fraction: 0.25
 
 models:
   lgbm:
     enabled: true
     prediction_horizon: 12    # bars ahead (12h with 1h candles)
-    direction_threshold: 0.005  # ±0.5% move = UP/DOWN, else FLAT
-    # Defaults — Optuna will tune these later
+    direction_threshold: 0.005  # legacy — kept for reference
+    # Triple barrier parameters (ATR-scaled)
+    barriers:
+      take_profit_atr: 1.5    # TP = 1.5 × ATR_14
+      stop_loss_atr: 1.5      # SL = 1.5 × ATR_14
+      max_hold_bars: 12       # vertical barrier
+    # LightGBM hyperparameters
     n_estimators: 500
     max_depth: 6
     num_leaves: 31
     learning_rate: 0.05
-    min_child_samples: 100
+    min_child_samples: 50
     subsample: 0.8
     colsample_bytree: 0.7
     reg_alpha: 0.1
     reg_lambda: 1.0
 
+backtest:
+  confidence_threshold: 0.40   # above model optimal threshold 
+  long_only: true              # only trade LONG (model predicts long entries)
+  tp_atr_mult: 1.5             # ALIGNED with label TP
+  sl_atr_mult: 1.5             # ALIGNED with label SL
+  max_hold_bars: 12            # ALIGNED with label timeout
+  trailing_activate_atr: 0.0   # disabled
+  trailing_distance_atr: 0.0   # disabled
+
 validation:
   n_splits: 5
-  train_size: 5000            # bars per training window
-  test_size: 500              # bars per test window
-  purge_gap: 12               # must be >= prediction_horizon
+  train_size: 5000
+  test_size: 500
+  purge_gap: 12
   embargo_pct: 0.01
 
 execution:

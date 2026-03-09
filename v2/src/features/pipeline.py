@@ -1,7 +1,14 @@
-"""Feature engineering pipeline — the core alpha source for v2.
+"""Feature engineering pipeline — lean, normalized features for v2.
 
-Assembles 100+ features from OHLCV data using TA-Lib and custom
-calculations. Designed for LightGBM consumption.
+Builds ~25 high-signal features from OHLCV data.  Every feature is either
+normalised (ratio / percentage) or stationary so it generalizes across
+different price levels and volatility regimes.
+
+Features REMOVED vs v1:
+ - Raw price-level indicators (EMA values, SMA_200, SAR, KC/BB bands, OBV, AD)
+ - Redundant momentum (Stoch, Williams %R, CCI, ROC, MOM — all measure the
+   same thing as RSI from different angles)
+ - Candlestick patterns (noise on hourly timeframe)
 """
 
 from __future__ import annotations
@@ -35,94 +42,69 @@ def build_features(df: pl.DataFrame) -> pl.DataFrame:
     features: dict[str, np.ndarray] = {}
 
     # ------------------------------------------------------------------
-    # 1. Trend indicators
+    # 1. Trend (normalized — distance from EMA in ATR units)
     # ------------------------------------------------------------------
-    for p in [8, 21, 55, 200]:
-        features[f"ema_{p}"] = talib.EMA(c, timeperiod=p)
-    features["sma_50"] = talib.SMA(c, timeperiod=50)
-    features["sma_200"] = talib.SMA(c, timeperiod=200)
+    atr_14 = talib.ATR(h, lo, c, timeperiod=14)
+    safe_atr = np.where((atr_14 == 0) | np.isnan(atr_14), 1, atr_14)
+    features["atr_14"] = atr_14  # kept for labeling + exits
+
+    for p in [8, 21, 55]:
+        ema = talib.EMA(c, timeperiod=p)
+        features[f"dist_ema_{p}"] = (c - ema) / safe_atr  # normalized distance
 
     macd, macd_sig, macd_hist = talib.MACD(c, fastperiod=12, slowperiod=26, signalperiod=9)
-    features["macd"] = macd
-    features["macd_signal"] = macd_sig
-    features["macd_hist"] = macd_hist
+    features["macd_hist_norm"] = macd_hist / safe_atr  # normalized MACD histogram
 
     features["adx_14"] = talib.ADX(h, lo, c, timeperiod=14)
-    features["plus_di"] = talib.PLUS_DI(h, lo, c, timeperiod=14)
-    features["minus_di"] = talib.MINUS_DI(h, lo, c, timeperiod=14)
-    features["sar"] = talib.SAR(h, lo)
-    features["aroon_up"], features["aroon_down"] = talib.AROON(h, lo, timeperiod=14)
+    features["di_spread"] = (talib.PLUS_DI(h, lo, c, timeperiod=14) -
+                             talib.MINUS_DI(h, lo, c, timeperiod=14))
 
     # ------------------------------------------------------------------
-    # 2. Momentum / oscillators
+    # 2. Momentum / oscillators (keep only non-redundant, bounded ones)
     # ------------------------------------------------------------------
     features["rsi_14"] = talib.RSI(c, timeperiod=14)
-    features["rsi_7"] = talib.RSI(c, timeperiod=7)
-    features["stoch_k"], features["stoch_d"] = talib.STOCH(h, lo, c)
-    # StochRSI: apply STOCHF to RSI values (use RSI as all three inputs)
-    rsi_arr = talib.RSI(c, timeperiod=14)
-    features["stochrsi_k"], features["stochrsi_d"] = talib.STOCHF(
-        rsi_arr, rsi_arr, rsi_arr, fastk_period=14, fastd_period=3
-    )
-    features["willr"] = talib.WILLR(h, lo, c, timeperiod=14)
-    features["cci_14"] = talib.CCI(h, lo, c, timeperiod=14)
-    features["roc_10"] = talib.ROC(c, timeperiod=10)
-    features["mom_10"] = talib.MOM(c, timeperiod=10)
+    features["mfi_14"] = talib.MFI(h, lo, c, v, timeperiod=14)
     features["ultosc"] = talib.ULTOSC(h, lo, c)
 
     # ------------------------------------------------------------------
-    # 3. Volatility
+    # 3. Volatility (all normalized / percentage-based)
     # ------------------------------------------------------------------
     bb_up, bb_mid, bb_low = talib.BBANDS(c, timeperiod=20)
-    features["bb_upper"] = bb_up
-    features["bb_lower"] = bb_low
+    safe_bb_range = np.where((bb_up - bb_low) == 0, 1, bb_up - bb_low)
+    features["bb_pctb"] = (c - bb_low) / safe_bb_range   # 0-1 band position
     features["bb_width"] = (bb_up - bb_low) / np.where(bb_mid == 0, 1, bb_mid)
-    features["bb_pctb"] = (c - bb_low) / np.where((bb_up - bb_low) == 0, 1, bb_up - bb_low)
-
-    features["atr_14"] = talib.ATR(h, lo, c, timeperiod=14)
-    features["natr_14"] = talib.NATR(h, lo, c, timeperiod=14)
-
-    # Keltner channel approximation
-    kc_mid = talib.EMA(c, timeperiod=20)
-    kc_atr = talib.ATR(h, lo, c, timeperiod=20)
-    features["kc_upper"] = kc_mid + 2 * kc_atr
-    features["kc_lower"] = kc_mid - 2 * kc_atr
+    features["natr_14"] = talib.NATR(h, lo, c, timeperiod=14)  # % ATR
 
     # ------------------------------------------------------------------
-    # 4. Volume
+    # 4. Volume (relative, not raw)
     # ------------------------------------------------------------------
-    features["obv"] = talib.OBV(c, v)
-    features["mfi_14"] = talib.MFI(h, lo, c, v, timeperiod=14)
-    features["ad_line"] = talib.AD(h, lo, c, v)
-    features["adosc"] = talib.ADOSC(h, lo, c, v)
-
-    # Relative volume (vs 20-bar SMA)
     vol_sma = talib.SMA(v, timeperiod=20)
     features["relative_volume"] = v / np.where(vol_sma == 0, 1, vol_sma)
 
+    features["adosc_norm"] = talib.ADOSC(h, lo, c, v) / (v + 1)  # normalized
+
     # ------------------------------------------------------------------
-    # 5. Returns at multiple scales
+    # 5. Returns at multiple scales (stationary by construction)
     # ------------------------------------------------------------------
-    for lag in [1, 2, 4, 8, 12, 24, 48]:
+    for lag in [1, 4, 12, 24]:
         ret = np.full_like(c, np.nan)
         ret[lag:] = np.log(c[lag:] / c[:-lag])
         features[f"log_return_{lag}"] = ret
 
     # ------------------------------------------------------------------
-    # 6. Microstructure
+    # 6. Microstructure (all 0-1 or ratio-based)
     # ------------------------------------------------------------------
-    features["bar_range"] = (h - lo) / np.where(c == 0, 1, c)
-    features["close_in_range"] = (c - lo) / np.where((h - lo) == 0, 1, h - lo)
-    features["body_ratio"] = np.abs(c - o) / np.where((h - lo) == 0, 1, h - lo)
+    bar_range_raw = h - lo
+    features["bar_range"] = bar_range_raw / np.where(c == 0, 1, c)
+    features["close_in_range"] = (c - lo) / np.where(bar_range_raw == 0, 1, bar_range_raw)
+    features["body_ratio"] = np.abs(c - o) / np.where(bar_range_raw == 0, 1, bar_range_raw)
 
     # Volume-weighted momentum
-    ret1 = features["log_return_1"]
-    features["vol_weighted_mom"] = ret1 * features["relative_volume"]
+    features["vol_weighted_mom"] = features["log_return_1"] * features["relative_volume"]
 
     # ------------------------------------------------------------------
-    # 7. Regime features (let LightGBM learn regimes)
+    # 7. Regime features (stationary / bounded)
     # ------------------------------------------------------------------
-    # Rolling realized volatility
     for w in [20, 50]:
         rvol = np.full_like(c, np.nan)
         for i in range(w, len(c)):
@@ -130,11 +112,9 @@ def build_features(df: pl.DataFrame) -> pl.DataFrame:
         features[f"realized_vol_{w}"] = rvol
 
     # Trend strength: |EMA21 - EMA55| / ATR14
-    ema21 = features["ema_21"]
-    ema55 = features["ema_55"]
-    atr14 = features["atr_14"]
-    with np.errstate(divide="ignore", invalid="ignore"):
-        features["trend_strength"] = np.abs(ema21 - ema55) / np.where(atr14 == 0, 1, atr14)
+    ema21 = talib.EMA(c, timeperiod=21)
+    ema55 = talib.EMA(c, timeperiod=55)
+    features["trend_strength"] = np.abs(ema21 - ema55) / safe_atr
 
     # Variance ratio (20-bar vs 1-bar) — <1 = mean-reverting, >1 = trending
     log_rets = np.diff(np.log(c), prepend=np.nan)
@@ -145,18 +125,6 @@ def build_features(df: pl.DataFrame) -> pl.DataFrame:
         var20 = (long_rets ** 2) / 20
         vr[i] = var20 / var1 if var1 > 0 else np.nan
     features["variance_ratio_20"] = vr
-
-    # ADX regime bucket
-    features["adx_regime"] = np.where(features["adx_14"] > 25, 1.0,
-                              np.where(features["adx_14"] < 20, -1.0, 0.0))
-
-    # ------------------------------------------------------------------
-    # 8. Candlestick patterns (encoded as -100/0/+100 by TA-Lib)
-    # ------------------------------------------------------------------
-    features["cdl_doji"] = talib.CDLDOJI(o, h, lo, c).astype(np.float64)
-    features["cdl_engulfing"] = talib.CDLENGULFING(o, h, lo, c).astype(np.float64)
-    features["cdl_hammer"] = talib.CDLHAMMER(o, h, lo, c).astype(np.float64)
-    features["cdl_morningstar"] = talib.CDLMORNINGSTAR(o, h, lo, c).astype(np.float64)
 
     # ------------------------------------------------------------------
     # Assemble into Polars DataFrame
@@ -178,6 +146,10 @@ def build_features(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def get_feature_names(df: pl.DataFrame) -> list[str]:
-    """Return list of feature column names (everything except OHLCV + timestamp)."""
-    skip = {"timestamp", "open", "high", "low", "close", "volume"}
+    """Return list of feature column names (everything except OHLCV + timestamp + label-leaking cols).
+
+    Excludes atr_14 because the triple barrier labels are DEFINED as
+    multiples of ATR — including it would leak label information.
+    """
+    skip = {"timestamp", "open", "high", "low", "close", "volume", "atr_14"}
     return [c for c in df.columns if c not in skip]
