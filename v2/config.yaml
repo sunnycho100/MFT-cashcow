@@ -9,14 +9,14 @@ trading:
   primary_timeframe: 1h
 
 data:
-  storage_path: ./v2/data
-  db_path: ./v2/data/v2.duckdb
+  storage_path: ./data
+  db_path: ./data/v2.duckdb
   # How much data to fetch (days)
   fetch_days: 1095          # ~3 years
   # How much data to use for training (days) — start small, iterate fast
   train_days: 365            # 1 year
   # Exchange for CCXT fetching (public data, no API key needed)
-  exchange: kraken
+  exchange: coinbase
 
 risk:
   max_position_pct: 0.10

@@ -1,420 +1,424 @@
-# V2 — Feature-First Gradient Boosting
+# MFT-Cashcow V2 — Feature-First Gradient Boosting
 
-> **TL;DR (read this, skip the rest):**
-> 1. Ditch deep learning. Use LightGBM/XGBoost with **heavy feature engineering** (150+ indicators, regime features, cross-asset signals) — the model is only as good as the features.
-> 2. Proper financial ML pipeline: purged walk-forward CV, Optuna hyperparameter tuning, custom Polars-based vectorized backtester with realistic slippage/fees.
-> 3. Ship fast: retrain daily, predict direction (up/down/flat), size positions with Kelly fraction, run paper trading — iterate weekly on features, not models.
+> **TL;DR:**
+> LightGBM 3-class direction classifier (UP/DOWN/FLAT) trained on 59 engineered features from hourly crypto OHLCV data.
+> Fetches 3 years of data from Coinbase, trains on 1 year, backtests on held-out 20%.
+> First run: -0.9% return vs -25.6% buy & hold — preserved 99% of capital during a bear period.
 
 ---
 
 ## Why V2 Exists
 
-**V1 failed.** It threw every deep learning model at the problem (TFT, LSTM-CNN, PPO reinforcement learning) and the result was an over-engineered system that didn't produce viable trading signals. The models were too complex, training was unstable, and the signal-to-noise ratio in crypto is too low for deep learning to shine without massive data and compute.
+**V1 failed.** It stacked deep learning models (TFT, LSTM-CNN, PPO reinforcement learning) and produced a system that never traded. The models were overfit, training was unstable, and crypto's low signal-to-noise ratio crushed the deep learning approach without massive data and compute.
 
 **V2's philosophy:** Simple models + great features > complex models + basic features.
-
----
-
-## What Changed from V1
 
 | Aspect | V1 (Failed) | V2 (This) |
 |--------|-------------|-----------|
 | Core model | TFT + LSTM-CNN + PPO RL | LightGBM gradient boosting |
-| Feature count | ~20 basic indicators | 150+ engineered features |
-| Training time | 6-12 hours | 5-15 minutes |
-| Regime awareness | None | Rolling stats fed as features |
-| Validation | Basic train/test split | Purged walk-forward CV |
-| Hyperparameter tuning | Manual | Optuna Bayesian optimization |
-| Backtesting | Minimal | Custom vectorized Polars backtester |
-| Debuggability | Black box | Feature importance + SHAP |
+| Features | ~20 basic indicators | 59 engineered features |
+| Training time | 6-12 hours | ~1 second |
+| Validation | basic train/test split | 80/20 chronological + early stopping |
+| Backtesting | minimal | vectorized with fees + slippage |
+| Debuggability | black box | feature importance built-in |
 
 ---
 
-## Architecture
+## Directory Structure
 
 ```
 v2/
-├── README.md                   ← you are here
-├── config.yaml                 ← trading pairs, risk params, model hyperparams
-├── requirements.txt            ← pinned dependencies
-├── src/
-│   ├── data/
-│   │   ├── fetcher.py          ← CCXT exchange data + yfinance fallback
-│   │   ├── store.py            ← DuckDB local storage
-│   │   └── universe.py         ← asset universe management
-│   ├── features/
-│   │   ├── technical.py        ← TA-Lib indicators (RSI, MACD, Bollinger, etc.)
-│   │   ├── microstructure.py   ← volume profiles, VWAP, order flow proxies
-│   │   ├── cross_asset.py      ← BTC dominance, correlation, lead-lag
-│   │   ├── regime.py           ← volatility regime, trend strength, variance ratio
-│   │   └── pipeline.py         ← feature assembly + cleaning + selection
-│   ├── models/
-│   │   ├── lgbm_model.py       ← LightGBM classifier (primary model)
-│   │   ├── xgb_model.py        ← XGBoost classifier (secondary/comparison)
-│   │   └── meta_labeling.py    ← meta-labeling for bet sizing (optional)
-│   ├── validation/
-│   │   ├── purged_cv.py        ← purged walk-forward cross-validation
-│   │   ├── backtest.py         ← vectorized Polars backtester
-│   │   └── metrics.py          ← Sharpe, Sortino, max drawdown, win rate
-│   ├── optimization/
-│   │   └── tuner.py            ← Optuna hyperparameter optimization
-│   ├── strategy/
-│   │   ├── signals.py          ← model output → trade signals
-│   │   └── position_sizer.py   ← Kelly criterion + risk controls
-│   ├── execution/
-│   │   └── exchange.py         ← CCXT paper/live execution
-│   └── utils/
-│       ├── logger.py           ← structured logging
-│       └── config.py           ← config loader
+├── README.md                ← you are here
+├── config.yaml              ← all configuration (pairs, model params, risk)
+├── requirements.txt         ← Python dependencies
+├── app.py                   ← Textual TUI dashboard (main entry point)
+├── test_pipeline.py         ← end-to-end pipeline test script
 ├── scripts/
-│   ├── train.py                ← training pipeline (fetch → features → fit → evaluate)
-│   ├── optimize.py             ← Optuna hyperparameter search
-│   ├── backtest.py             ← run backtest with trained model
-│   └── paper_trade.py          ← live paper trading loop
-└── notebooks/
-    └── feature_analysis.ipynb  ← EDA, feature importance, SHAP plots
+│   └── fetch_data.py        ← CLI to fetch OHLCV data from exchange
+├── data/
+│   └── v2.duckdb            ← local DuckDB database (auto-created)
+├── checkpoints/
+│   ├── lgbm_model.pkl       ← trained model (auto-created)
+│   └── lgbm_meta.json       ← model metadata + metrics (auto-created)
+└── src/
+    ├── data/
+    │   ├── fetcher.py        ← CCXT paginated data fetcher
+    │   └── store.py          ← DuckDB storage layer
+    ├── features/
+    │   └── pipeline.py       ← 59-feature engineering pipeline
+    ├── models/
+    │   └── lgbm_model.py     ← LightGBM classifier + checkpoint persistence
+    ├── validation/
+    │   └── backtest.py       ← vectorized backtester with transaction costs
+    ├── strategy/
+    │   └── paper_trade.py    ← paper trading logic
+    └── utils/
+        ├── config.py         ← YAML config loader
+        └── logger.py         ← structured logging
 ```
 
 ---
 
-## Core Components — Technical Detail
+## Full Pipeline (Step by Step)
 
-### 1. Feature Engineering (the actual alpha)
+### Step 1: Data Fetching
 
-This is where V2 lives or dies. The model only learns what features teach it.
-
-#### Technical Indicators (~60 features) — `src/features/technical.py`
-Built with **TA-Lib** (C-speed, 158 indicators available). Key groups:
-
-| Category | Indicators | Why |
-|----------|-----------|-----|
-| Trend | EMA(8,21,55,200), MACD, ADX, Aroon, Parabolic SAR | Direction + trend strength |
-| Momentum | RSI(14), Stochastic RSI, Williams %R, CCI, ROC | Overbought/oversold, mean reversion signals |
-| Volatility | Bollinger Bands, ATR(14), Keltner Channels, historical vs implied vol ratio | Regime detection, stop placement |
-| Volume | OBV, VWAP, MFI, Chaikin Money Flow, A/D line | Smart money tracking |
-| Pattern | Candlestick patterns (Doji, Engulfing, Hammer, etc.) | Short-term reversal signals |
-
-**Implementation pattern:**
-```python
-import talib
-import polars as pl
-import numpy as np
-
-def add_technical_features(df: pl.DataFrame) -> pl.DataFrame:
-    close = df["close"].to_numpy().astype(np.float64)
-    high = df["high"].to_numpy().astype(np.float64)
-    low = df["low"].to_numpy().astype(np.float64)
-    volume = df["volume"].to_numpy().astype(np.float64)
-
-    return df.with_columns([
-        pl.Series("rsi_14", talib.RSI(close, timeperiod=14)),
-        pl.Series("macd", talib.MACD(close)[0]),
-        pl.Series("macd_signal", talib.MACD(close)[1]),
-        pl.Series("bb_upper", talib.BBANDS(close)[0]),
-        pl.Series("bb_lower", talib.BBANDS(close)[2]),
-        pl.Series("adx_14", talib.ADX(high, low, close, timeperiod=14)),
-        pl.Series("atr_14", talib.ATR(high, low, close, timeperiod=14)),
-        pl.Series("obv", talib.OBV(close, volume)),
-        pl.Series("mfi_14", talib.MFI(high, low, close, volume, timeperiod=14)),
-        # ... etc
-    ])
-```
-
-#### Microstructure Features (~30 features) — `src/features/microstructure.py`
-Custom-built. These are the alpha features most retail quants miss.
-
-| Feature | Formula / Logic | Why It Matters |
-|---------|----------------|----------------|
-| VWAP deviation | `(close - vwap) / atr` | Institutional fair value |
-| Volume profile | Volume at price buckets over lookback | Support/resistance from actual volume |
-| Relative volume | `volume / sma(volume, 20)` | Unusual activity detection |
-| Bar-to-bar returns | `log(close / close.shift(n))` for n=1,4,12,24 | Multi-scale momentum |
-| High-low range ratio | `(high - low) / close` | Intraday volatility |
-| Close position in range | `(close - low) / (high - low)` | Buying/selling pressure |
-| Volume-weighted momentum | `returns * relative_volume` | Activity-weighted direction |
-| Kyle's lambda proxy | `abs(returns) / volume` | Price impact estimation |
-
-#### Cross-Asset Features (~20 features) — `src/features/cross_asset.py`
-
-| Feature | Logic | Why |
-|---------|-------|-----|
-| BTC dominance change | `btc_mcap / total_mcap` delta | Risk-on/risk-off regime |
-| BTC-ETH correlation (rolling) | 30-bar rolling Pearson | Pair divergence opportunities |
-| BTC lead returns | BTC returns lagged 1-4 bars | BTC leads altcoin moves |
-| Cross-pair spread z-score | Standardized price ratio | Mean reversion across pairs |
-
-#### Regime Features (~20 features) — `src/features/regime.py`
-Instead of a separate regime detector, **feed regime signals as features** and let LightGBM learn the boundaries.
-
-| Feature | Calculation | What It Captures |
-|---------|-------------|-----------------|
-| Realized vol percentile | `std(returns, 20)` percentile over 252 bars | Low/medium/high vol regime |
-| Trend strength | `abs(EMA_21 - EMA_55) / ATR_14` | Trending vs ranging |
-| Variance ratio | `var(returns, 20) / (20 * var(returns, 1))` | Mean-reverting vs trending (< 1 = MR) |
-| Hurst exponent (rolling) | Rolling 100-bar rescaled range | Persistence vs anti-persistence |
-| ADX regime | ADX > 25 = trending, < 20 = ranging | Trend filter |
-| Vol-of-vol | `std(rolling_vol, 20)` | Regime instability |
-
-### 2. LightGBM Model — `src/models/lgbm_model.py`
-
-**Why LightGBM over XGBoost:**
-- 2-5x faster training (leaf-wise growth vs level-wise)
-- Built-in categorical feature support (no one-hot encoding)
-- Better implicit regularization for noisy data
-- Lower memory usage
-
-**Target variable:** 3-class direction (UP / DOWN / FLAT) based on forward returns exceeding a threshold (e.g., ±0.5% over 12 bars).
-
-**Recommended hyperparameter ranges** (Optuna will search within these):
-
-```python
-PARAM_SPACE = {
-    "n_estimators": (200, 2000),             # boosting rounds
-    "max_depth": (4, 8),                      # shallow trees for noisy data
-    "num_leaves": (15, 63),                   # 2^max_depth - 1 max
-    "learning_rate": (0.01, 0.1),             # log scale
-    "min_child_samples": (50, 200),           # large to prevent overfitting
-    "subsample": (0.6, 0.9),                  # row sampling
-    "colsample_bytree": (0.5, 0.8),          # feature sampling
-    "reg_alpha": (1e-3, 10.0),               # L1 regularization, log scale
-    "reg_lambda": (1e-3, 10.0),              # L2 regularization, log scale
-    "min_split_gain": (0.01, 1.0),           # minimum gain to split
-}
-```
-
-**Key library:** `lightgbm >= 4.5` — use `objective="multiclass"`, `metric="multi_logloss"`, `verbosity=-1`.
-
-### 3. Purged Walk-Forward CV — `src/validation/purged_cv.py`
-
-Standard `TimeSeriesSplit` from scikit-learn is **not sufficient** because:
-- No purge gap between train and test (data leakage from overlapping labels)
-- No embargo period after test (prevents peeking into the future)
-- Fixed expanding window (we want sliding window for non-stationarity)
-
-**Custom implementation (~60 lines):**
-
-```python
-def purged_walk_forward_cv(
-    n_samples: int,
-    n_splits: int = 5,
-    train_size: int = 5000,    # fixed sliding window
-    test_size: int = 500,
-    purge_gap: int = 12,       # >= prediction_horizon
-    embargo_pct: float = 0.01  # % of train to embargo after test
-) -> list[tuple[np.ndarray, np.ndarray]]:
-    """Generate train/test indices with purging and embargo."""
-    splits = []
-    for i in range(n_splits):
-        test_end = n_samples - i * test_size
-        test_start = test_end - test_size
-        train_end = test_start - purge_gap
-        train_start = max(0, train_end - train_size)
-        embargo = int(train_size * embargo_pct)
-
-        train_idx = np.arange(train_start, train_end - embargo)
-        test_idx = np.arange(test_start, test_end)
-        splits.append((train_idx, test_idx))
-    return splits[::-1]  # chronological order
-```
-
-### 4. Optuna Hyperparameter Optimization — `src/optimization/tuner.py`
-
-```python
-import optuna
-import lightgbm as lgb
-
-def objective(trial: optuna.Trial, X, y, cv_splits) -> float:
-    params = {
-        "n_estimators": trial.suggest_int("n_estimators", 200, 2000),
-        "max_depth": trial.suggest_int("max_depth", 4, 8),
-        "num_leaves": trial.suggest_int("num_leaves", 15, 63),
-        "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.1, log=True),
-        "min_child_samples": trial.suggest_int("min_child_samples", 50, 200),
-        "subsample": trial.suggest_float("subsample", 0.6, 0.9),
-        "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 0.8),
-        "reg_alpha": trial.suggest_float("reg_alpha", 1e-3, 10.0, log=True),
-        "reg_lambda": trial.suggest_float("reg_lambda", 1e-3, 10.0, log=True),
-        "objective": "multiclass",
-        "num_class": 3,
-        "metric": "multi_logloss",
-        "verbosity": -1,
-        "n_jobs": -1,
-    }
-
-    scores = []
-    for train_idx, test_idx in cv_splits:
-        model = lgb.LGBMClassifier(**params)
-        model.fit(
-            X[train_idx], y[train_idx],
-            eval_set=[(X[test_idx], y[test_idx])],
-            callbacks=[lgb.early_stopping(50, verbose=False)],
-        )
-        scores.append(model.best_score_["valid_0"]["multi_logloss"])
-    return np.mean(scores)
-
-# Run: optuna.create_study(direction="minimize", pruner=optuna.pruners.MedianPruner())
-# study.optimize(objective, n_trials=100, timeout=3600)
-```
-
-### 5. Vectorized Polars Backtester — `src/validation/backtest.py`
-
-No existing backtesting framework supports Polars natively. A custom vectorized backtester is ~100 lines and faster than all alternatives.
-
-**Core logic:**
-```python
-def backtest(
-    df: pl.DataFrame,           # must have: timestamp, close, signal, confidence
-    initial_capital: float = 100_000,
-    fee_rate: float = 0.001,    # 10bps taker fee (Coinbase)
-    slippage_bps: float = 5,    # 5bps slippage estimate
-    max_position_pct: float = 0.10,
-) -> pl.DataFrame:
-    """Vectorized backtest with transaction costs."""
-    # 1. Convert signals to positions (with sizing)
-    # 2. Calculate returns with fees + slippage on each trade
-    # 3. Track equity curve, drawdowns, per-trade PnL
-    # Returns DataFrame with: equity, drawdown, daily_returns, trade_log
-```
-
-**Key metrics calculated in `src/validation/metrics.py`:**
-- Sharpe Ratio (annualized)
-- Sortino Ratio
-- Max Drawdown (% and duration)
-- Win Rate + Profit Factor
-- Average Win / Average Loss
-- Calmar Ratio
-- Total Return vs Buy-and-Hold
-
-### 6. Execution & Risk — `src/strategy/` + `src/execution/`
-
-Carried forward from V1 conceptually, simplified:
-- **Position sizing:** Fractional Kelly criterion (quarter-Kelly for safety)
-- **Risk controls:** Max position 10%, max exposure 50%, 3% stop-loss, 6% take-profit
-- **Execution:** CCXT for paper/live mode, same exchange support as V1
-
----
-
-## Libraries & Dependencies
+**File:** `src/data/fetcher.py` + `scripts/fetch_data.py`
 
 ```
-# Core ML
-lightgbm>=4.5,<5.0          # primary model
-xgboost>=2.1,<4.0            # secondary/comparison model
-scikit-learn>=1.5,<2.0       # preprocessing, metrics, base utilities
-optuna>=3.6,<5.0             # Bayesian hyperparameter optimization
-shap>=0.45                   # model interpretability
-
-# Feature Engineering
-TA-Lib>=0.4.28               # 158 technical indicators (C-speed)
-                              # NOTE: requires system install first:
-                              #   brew install ta-lib
-
-# Data
-polars>=1.0,<2.0             # fast DataFrames (replaces pandas)
-duckdb>=1.0,<2.0             # local analytical storage
-ccxt>=4.0                    # exchange connectivity
-yfinance>=0.2.40             # fallback data source
-requests>=2.31               # HTTP for APIs
-
-# Visualization & Analysis
-plotly>=5.20                  # interactive charts
-dash>=2.17                   # dashboard (optional)
-matplotlib>=3.9              # static plots for notebooks
-
-# Infrastructure
-pyyaml>=6.0                  # config loading
-python-dotenv>=1.0           # env vars
-loguru>=0.7                  # structured logging (upgrade from v1)
-
-# Dev/Notebooks
-jupyterlab>=4.2              # notebook environment
-ipywidgets>=8.1              # interactive notebook widgets
+Coinbase (CCXT)  →  paginated hourly OHLCV  →  DuckDB
 ```
 
-**System dependency (macOS):**
+- **Exchange:** Coinbase (public API, no key needed)
+  - Fallback chain: `coinbase → kraken → binanceus → binance`
+  - Binance is blocked in the US (451 error), Kraken ignores the `since` parameter
+  - yfinance as last-resort fallback
+- **Pairs:** BTC/USDT, ETH/USDT, SOL/USDT
+  - Auto-resolves naming differences (e.g., `BTC/USDT → BTC/USD` on exchanges that use USD)
+- **Timeframe:** 1h candles
+- **History:** 1,095 days (~3 years)
+- **Pagination:** Fetches in batches of 1,000 candles, advances cursor by last timestamp + 1 candle
+- **Storage:** DuckDB with `(pair, timeframe, timestamp)` primary key — upserts on save, fast analytical reads
+- **Current data:** 78,789 total rows (26,275 each for BTC & ETH, 26,239 for SOL)
+- **Date range:** 2023-03-10 → 2026-03-09
+
+**Usage:**
 ```bash
-brew install ta-lib
+# Fetch all 3 pairs, 3 years
+python3 scripts/fetch_data.py --days 1095 --pairs BTC/USDT ETH/USDT SOL/USDT
+
+# Check what's stored
+python3 scripts/fetch_data.py --summary
 ```
+
+### Step 2: Feature Engineering
+
+**File:** `src/features/pipeline.py`
+
+Converts raw OHLCV into **59 features** across 8 categories. All computed using TA-Lib (C-speed) and NumPy.
+
+| Category | Count | Features | Purpose |
+|----------|-------|----------|---------|
+| **Trend** | 12 | EMA(8,21,55,200), SMA(50,200), MACD/signal/hist, ADX, +DI/-DI, SAR, Aroon up/down | Direction & trend strength |
+| **Momentum** | 10 | RSI(7,14), Stoch K/D, StochRSI K/D, Williams %R, CCI, ROC, MOM, UltOsc | Overbought/oversold, mean reversion |
+| **Volatility** | 8 | Bollinger (upper/lower/width/%B), ATR, NATR, Keltner (upper/lower) | Regime detection, stop placement |
+| **Volume** | 5 | OBV, MFI, A/D line, ADOSC, relative volume | Smart money tracking |
+| **Returns** | 7 | Log returns at 1, 2, 4, 8, 12, 24, 48 bar lags | Multi-scale momentum |
+| **Microstructure** | 4 | Bar range, close-in-range, body ratio, vol-weighted momentum | Price action quality |
+| **Regime** | 5 | Realized vol (20,50), trend strength, variance ratio, ADX regime | Let LightGBM learn regime boundaries |
+| **Candlestick** | 4 | Doji, Engulfing, Hammer, Morning Star | Short-term reversal patterns |
+| | **59 total** | | |
+
+**Key design decisions:**
+- Regime features are fed as numeric inputs (not a separate detector) — LightGBM learns the thresholds itself
+- Variance ratio < 1 indicates mean-reverting, > 1 indicates trending
+- Relative volume = `volume / SMA(volume, 20)` — detects unusual activity
+- All NaN rows from lookback warmup are dropped (no imputation)
+
+### Step 3: Label Creation
+
+**File:** `src/models/lgbm_model.py` → `create_labels()`
+
+Creates a 3-class target variable:
+
+```
+Forward return = (close[t + horizon] - close[t]) / close[t]
+
+If forward_return >  +0.5%  →  UP   (class 2)
+If forward_return <  -0.5%  →  DOWN (class 0)
+Otherwise                   →  FLAT (class 1)
+```
+
+- **Horizon:** 12 bars (12 hours with 1h candles)
+- **Threshold:** ±0.5% (`direction_threshold` in config)
+- Rows where forward return can't be computed (last 12 bars) are dropped
+
+**Typical class distribution (1 year BTC):**
+
+| Class | Count | Percentage |
+|-------|-------|------------|
+| DOWN | 2,770 | 31.7% |
+| FLAT | 3,183 | 36.4% |
+| UP | 2,790 | 31.9% |
+
+Reasonably balanced — no need for class weighting.
+
+### Step 4: Model Training
+
+**File:** `src/models/lgbm_model.py` → `train()`
+
+- **Model:** `LGBMClassifier` (multiclass, 3 classes)
+- **Split:** Chronological 80/20 (no shuffle — respects time ordering)
+- **Early stopping:** 50 rounds of no improvement on validation set
+- **Training data:** Last 365 days (configurable via `train_days`)
+- **Training time:** ~1 second on Apple M4
+
+**Hyperparameters (from config.yaml):**
+
+| Parameter | Value | Purpose |
+|-----------|-------|---------|
+| `n_estimators` | 500 | max boosting rounds (early stopping usually stops at ~8) |
+| `max_depth` | 6 | shallow trees for noisy data |
+| `num_leaves` | 31 | complexity control |
+| `learning_rate` | 0.05 | step size |
+| `min_child_samples` | 100 | large to prevent overfitting |
+| `subsample` | 0.8 | row sampling per tree |
+| `colsample_bytree` | 0.7 | feature sampling per tree |
+| `reg_alpha` | 0.1 | L1 regularization |
+| `reg_lambda` | 1.0 | L2 regularization |
+
+**Checkpoint persistence:**
+- Model saved to `checkpoints/lgbm_model.pkl` (pickle)
+- Metadata saved to `checkpoints/lgbm_meta.json` (training time, accuracy, feature names, per-class metrics)
+- On next launch, `load()` restores the model — no re-training needed
+
+### Step 5: Prediction
+
+**File:** `src/models/lgbm_model.py` → `predict()`
+
+Adds 5 columns to the DataFrame:
+- `pred_class` — integer (0, 1, 2)
+- `pred_prob_down` — probability of DOWN
+- `pred_prob_flat` — probability of FLAT
+- `pred_prob_up` — probability of UP
+- `pred_label` — string ("DOWN", "FLAT", "UP")
+
+### Step 6: Backtesting
+
+**File:** `src/validation/backtest.py`
+
+Vectorized bar-by-bar simulation with realistic transaction costs.
+
+**Trading rules:**
+- **LONG** when `pred_class == UP` and `prob_up >= 0.45`
+- **SHORT** when `pred_class == DOWN` and `prob_down >= 0.45`
+- **FLAT** otherwise (no position)
+- Position size: 10% of equity per trade (`max_position_pct`)
+
+**Cost model:**
+- Taker fee: 10 bps per side (0.1%) — 20 bps round-trip
+- Slippage: 5 bps per execution
+
+**Metrics calculated:**
+- Total return (%) vs buy & hold (%)
+- Sharpe ratio (annualized for hourly data, √8760)
+- Max drawdown (%)
+- Win rate, avg win %, avg loss %
+- Profit factor (gross wins / gross losses)
+- Final equity
+
+### Step 7: Paper Trading
+
+**File:** `src/strategy/paper_trade.py`
+
+Fetches the latest 15 days of data per pair, builds features on the most recent bar, and generates a signal:
+- **BUY** if predicted UP with >45% confidence
+- **SELL** if predicted DOWN with >45% confidence
+- **HOLD** otherwise
 
 ---
 
-## Data Pipeline
+## First Training Results
 
 ```
-Exchange (CCXT)          Fallback (yfinance)
-       ↓                        ↓
-    fetcher.py  ←───────── auto-fallback
-       ↓
-  DuckDB (store.py)  ←── append-only hourly OHLCV
-       ↓
-  feature pipeline.py  ──→  150+ features per bar
-       ↓
-  LightGBM model  ──→  probability(UP, DOWN, FLAT)
-       ↓
-  signals.py  ──→  direction + confidence threshold
-       ↓
-  position_sizer.py  ──→  Kelly-sized position
-       ↓
-  exchange.py  ──→  paper/live order
+Training: 6,994 train / 1,749 test rows, 59 features
+Early stopped at iteration 8 (of 500)
+
+Accuracy: 39.28% (vs 33% random baseline)
+
+Per-class performance:
+  DOWN:  P=0.402  R=0.050  F1=0.089   — very conservative, rarely predicts
+  FLAT:  P=0.457  R=0.572  F1=0.508   — captures the majority class well
+  UP:    P=0.345  R=0.627  F1=0.445   — biased toward UP predictions
+
+Backtest (last 20%, ~1,750 bars):
+  Total Return:   -0.90%
+  Buy & Hold:     -25.58%
+  Sharpe Ratio:   -1.71
+  Max Drawdown:   -1.61%
+  Total Trades:   44
+  Win Rate:       50.0%
+
+Top 10 features by importance:
+  realized_vol_50       47
+  ad_line               42
+  obv                   34
+  sma_200               29
+  realized_vol_20       28
+  natr_14               24
+  trend_strength        21
+  adx_14                19
+  log_return_48         19
+  sma_50                18
 ```
+
+**Interpretation:** The model preserved 99% of capital during a period where buy & hold lost 25%. It's heavily biased toward FLAT/UP and almost never predicts DOWN (5% recall). The early stopping at iteration 8 suggests the model isn't finding strong patterns — expected for a first iteration without hyperparameter tuning.
 
 ---
 
-## Training & Evaluation Workflow
+## How to Use
+
+### Prerequisites
 
 ```bash
-# 1. Fetch latest data
-python scripts/train.py --fetch-only
+# System dependency (macOS)
+brew install ta-lib libomp
 
-# 2. Train model with default config
-python scripts/train.py
+# Python dependencies
+cd v2
+python3 -m pip install -r requirements.txt
+```
 
-# 3. Run hyperparameter optimization (1 hour)
-python scripts/optimize.py --n-trials 100 --timeout 3600
+### Fetch Data (first time only)
 
-# 4. Backtest best model
-python scripts/backtest.py --model checkpoints/best_lgbm.pkl
+```bash
+cd v2
+python3 scripts/fetch_data.py --days 1095 --pairs BTC/USDT ETH/USDT SOL/USDT
+```
 
-# 5. Start paper trading
-python scripts/paper_trade.py
+### Launch the TUI
+
+```bash
+cd v2
+python3 app.py
+```
+
+The TUI has three pinned summary panels at the top (DATA / MODEL / BACKTEST) and a scrolling log below.
+
+**Controls:**
+
+| Key | Action |
+|-----|--------|
+| `t` | Train Model (skips if already trained) |
+| `b` | Run Backtest |
+| `p` | Paper Trade (fetches live data, generates signals) |
+| `d` | Show Data Info |
+| `q` | Quit |
+
+### Run Pipeline Without TUI
+
+```bash
+cd v2
+python3 test_pipeline.py
 ```
 
 ---
 
-## Target Metrics (what "working" means for V2)
+## Configuration
 
-| Metric | Target | V1 Actual |
-|--------|--------|-----------|
-| Direction accuracy | > 55% (after fees, this is profitable) | Unknown/poor |
-| Sharpe ratio | > 1.0 (annualized) | N/A |
-| Max drawdown | < 15% | N/A |
-| Win rate | > 50% | N/A |
-| Profit factor | > 1.3 | N/A |
-| Training time | < 15 min | 6-12 hours |
-| Retrain frequency | Daily | Manual |
+All parameters are in `config.yaml`:
+
+```yaml
+trading:
+  pairs: [BTC/USDT, ETH/USDT, SOL/USDT]
+  primary_timeframe: 1h
+
+data:
+  db_path: ./data/v2.duckdb
+  fetch_days: 1095        # 3 years of history
+  train_days: 365         # train on last 1 year
+  exchange: coinbase
+
+models:
+  lgbm:
+    prediction_horizon: 12        # predict 12 bars ahead
+    direction_threshold: 0.005    # ±0.5% = UP/DOWN
+    n_estimators: 500
+    max_depth: 6
+    learning_rate: 0.05
+
+risk:
+  max_position_pct: 0.10         # 10% per trade
+  stop_loss_pct: 0.03            # 3% stop loss
+  take_profit_pct: 0.06          # 6% take profit
+  kelly_fraction: 0.25           # quarter-Kelly sizing
+```
 
 ---
 
-## Implementation Plan
+## Tech Stack
 
-| Phase | What | Est. Time |
-|-------|------|-----------|
-| 1 | Data pipeline (fetcher, store, universe) | 2-3 hours |
-| 2 | Feature engineering (technical, microstructure, regime, cross-asset) | 4-6 hours |
-| 3 | LightGBM model + purged CV + label creation | 2-3 hours |
-| 4 | Backtester + metrics | 2-3 hours |
-| 5 | Optuna hyperparameter optimization | 1-2 hours |
-| 6 | Strategy (signals, position sizing, risk) | 2-3 hours |
-| 7 | Execution (CCXT paper trading) | 1-2 hours |
-| 8 | Training script + paper trading loop | 1-2 hours |
-| **Total** | | **~15-22 hours** |
+| Component | Library | Version | Purpose |
+|-----------|---------|---------|---------|
+| Model | LightGBM | 4.6.0 | Gradient boosting classifier |
+| Features | TA-Lib | 0.6.8 | 158 technical indicators (C-speed) |
+| DataFrames | Polars | 1.38+ | Fast columnar operations (replaces pandas) |
+| Storage | DuckDB | 1.4+ | Local analytical database |
+| Exchange | CCXT | 4.5+ | Coinbase data fetching |
+| Metrics | scikit-learn | 1.8+ | accuracy, classification report |
+| TUI | Textual | 8.0+ | Terminal dashboard |
+| Config | PyYAML | 6.0+ | YAML config loading |
+| Runtime | Python | 3.13 | macOS Apple M4 |
+
+**System dependencies:** `brew install ta-lib libomp`
 
 ---
 
-## Key Lessons from V1 (Don't Repeat)
+## Data Flow Diagram
 
-1. **Don't stack models for the sake of it.** V1 had TFT + LSTM-CNN + PPO + XGBoost + Mean Reversion + Momentum. None were individually validated.
-2. **Validate before ensembling.** Each component must prove itself in backtesting before combining.
-3. **Features > models.** A LightGBM with 150 good features will beat a Transformer with 10 bad features.
-4. **Proper cross-validation is non-negotiable.** Without purged walk-forward CV, all results are suspect.
-5. **Track costs.** A model with 60% accuracy is unprofitable if fees eat the edge. Always backtest with realistic transaction costs.
+```
+┌─────────────┐     ┌──────────────┐     ┌──────────────┐
+│  Coinbase    │────→│  fetcher.py  │────→│  DuckDB      │
+│  (CCXT)     │     │  paginated   │     │  store.py    │
+│  public API │     │  1000/batch  │     │  78K+ rows   │
+└─────────────┘     └──────────────┘     └──────┬───────┘
+                                                │
+                                    load_ohlcv(last 365 days)
+                                                │
+                                                ▼
+                                       ┌────────────────┐
+                                       │  pipeline.py   │
+                                       │  59 features   │
+                                       │  TA-Lib + NumPy│
+                                       └───────┬────────┘
+                                               │
+                                    create_labels(±0.5%, 12h)
+                                               │
+                                               ▼
+                                      ┌─────────────────┐
+                                      │  lgbm_model.py  │
+                                      │  LGBMClassifier │
+                                      │  3-class: U/D/F │
+                                      └───────┬─────────┘
+                                              │
+                              ┌───────────────┼───────────────┐
+                              │               │               │
+                              ▼               ▼               ▼
+                     ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+                     │  backtest.py │ │ paper_trade  │ │  checkpoint  │
+                     │  vectorized  │ │  live signal │ │  .pkl + .json│
+                     │  fees+slip   │ │  BUY/SELL/   │ │  persistence │
+                     │  Sharpe, DD  │ │  HOLD        │ │              │
+                     └──────────────┘ └──────────────┘ └──────────────┘
+                              │               │
+                              └───────┬───────┘
+                                      ▼
+                              ┌──────────────┐
+                              │   app.py     │
+                              │  Textual TUI │
+                              │  pinned      │
+                              │  summary     │
+                              └──────────────┘
+```
+
+---
+
+## Next Steps (Not Yet Implemented)
+
+- **Purged walk-forward CV** — proper time-series cross-validation with purge gaps (currently just 80/20 split)
+- **Optuna hyperparameter tuning** — Bayesian search over LightGBM params
+- **SHAP analysis** — model interpretability, per-prediction explanations
+- **Cross-asset features** — BTC dominance, pair correlations, lead-lag signals
+- **Multi-pair training** — train on all 3 pairs simultaneously
+- **Continuous paper trading** — hourly loop instead of snapshot
+- **Daily retraining** — automated retrain with latest data
+
+---
+
+## Key Lessons from V1
+
+1. **Don't stack models without validating each one individually.** V1 had TFT + LSTM-CNN + PPO + XGBoost — none were proven alone.
+2. **Features > model complexity.** A LightGBM with 59 good features beats a Transformer with 10 bad features.
+3. **Proper CV is non-negotiable.** Without respecting time ordering, all results are suspect.
+4. **Track costs.** A model with 60% accuracy is unprofitable if fees eat the edge.
+5. **Start small and iterate.** V2 trains in 1 second, not 12 hours — experiment fast.
