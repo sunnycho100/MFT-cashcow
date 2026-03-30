@@ -13,12 +13,12 @@ data:
   db_path: ./data/v2.duckdb
   fetch_days: 1095          # ~3 years
   train_days: 365            # 1 year
-  exchange: coinbase
+  exchange: kraken
 
 risk:
   max_position_pct: 0.30       # ↑ from 0.10 — more aggressive
   max_total_exposure_pct: 0.90 # ↑ allow near-full capital usage across pairs
-  max_drawdown_pct: 0.20
+  max_drawdown_pct: 0.30       # ↑ from 0.20 — deployment plan spec
   kelly_fraction: 0.50         # ↑ from 0.25 — half-Kelly for growth
 
 models:
@@ -61,3 +61,57 @@ validation:
 
 execution:
   mode: paper
+
+kraken:
+  api_key_env: KRAKEN_API_KEY
+  api_secret_env: KRAKEN_API_SECRET
+  pairs:
+    - BTC/USD
+    - ETH/USD
+    - SOL/USD
+  margin_leverage: 2          # conservative 2x (max available 5-10x)
+  order_type_entry: limit     # limit for maker fee (0.16% vs taker 0.26%)
+  order_type_exit: market     # market for exits — don't risk missing stops
+  limit_fill_timeout_bars: 3  # if limit not filled in 3 bars → convert to market
+  dead_man_timeout_sec: 90    # cancel_all_after timeout
+  dead_man_heartbeat_sec: 60  # heartbeat interval
+
+margin:
+  max_leverage: 2             # 2-3x for micro account
+  max_margin_usage_pct: 0.60  # never use >60% of available margin
+  rollover_max_hours: 72      # max hold for margin positions (Kraken charges every 4h)
+
+alerting:
+  telegram_bot_token_env: TELEGRAM_BOT_TOKEN
+  telegram_chat_id_env: TELEGRAM_CHAT_ID
+  enabled: true
+
+drift:
+  adwin_delta: 0.002          # ADWIN sensitivity
+  page_hinkley_delta: 0.005   # Page-Hinkley sensitivity
+  calibration_window: 50      # bars for rolling Brier score
+  calibration_threshold: 0.05 # Brier score increase to flag drift
+  ks_pvalue_threshold: 0.01   # KS-test p-value for regime shift
+  min_features_for_drift: 3   # ADWIN: need ≥3 features to flag
+
+retrain:
+  cooldown_hours: 48          # min hours between retrains
+  emergency_halt_count: 3     # 3 consecutive failed retrains → halt
+  scheduled_day: sunday
+  scheduled_hour_utc: 0
+  max_consecutive_losses: 5   # trigger retrain
+  min_sharpe_threshold: -0.5  # rolling 30-trade Sharpe below this → trigger
+  no_trade_days: 14           # no trades for 14 days → recalibrate
+  oos_days: 60                # OOS window for champion/challenger evaluation
+  oos_purge_gap_bars: 12      # purge gap for OOS backtest
+  max_trees: 2000             # cap for incremental refinement
+
+aws:
+  region: us-east-1
+  s3_bucket_env: AWS_S3_BUCKET
+  instance_type: t3.micro
+  cron_data_fetch: "2 * * * *"     # HH:02 every hour
+  cron_signals: "3 * * * *"        # HH:03 every hour
+  cron_drift_update: "5 * * * *"   # HH:05 every hour
+  cron_report: "0 6 * * *"         # daily 06:00 UTC
+  cron_retrain: "0 0 * * 0"        # Sunday 00:00 UTC

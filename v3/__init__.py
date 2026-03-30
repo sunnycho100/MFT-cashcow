@@ -1,0 +1,1 @@
+"""MFT-Cashcow v3."""

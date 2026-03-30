@@ -18,6 +18,10 @@ optuna>=3.6,<5.0
 # TA-Lib requires system install: brew install ta-lib
 TA-Lib>=0.4.28
 
+# Drift Detection (Phase 2)
+river>=0.21               # ADWIN, Page-Hinkley online drift detectors
+scipy>=1.12               # KS-test for regime shift detection
+
 # Interpretability
 shap>=0.45
 

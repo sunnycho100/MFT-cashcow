@@ -1,0 +1,35 @@
+# V3 starter configuration
+
+trading:
+  pairs:
+    - BTC/USD
+    - ETH/USD
+    - SOL/USD
+  primary_timeframe: 1h
+
+transport:
+  mode: in_memory
+  max_queue_size: 10000
+
+strategy:
+  long_score_threshold: 0.60
+  short_score_threshold: 0.35
+  short_requires_bear_regime: true
+  allow_event_overlay: true
+  default_order_type: limit
+
+execution:
+  venue: kraken
+  validate_orders: true
+  default_leverage: 2
+  base_size_fraction: 0.10
+
+kraken:
+  api_key_env: KRAKEN_API_KEY
+  api_secret_env: KRAKEN_API_SECRET
+  use_margin: false
+  dead_man_timeout_sec: 90
+
+server:
+  owner: decision_engine
+  persist_signal_log: true
