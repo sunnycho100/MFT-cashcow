@@ -33,3 +33,12 @@ kraken:
 server:
   owner: decision_engine
   persist_signal_log: true
+
+polymarket:
+  gamma_base_url: https://gamma-api.polymarket.com
+  clob_base_url: https://clob.polymarket.com
+  user_agent: MFT-Cashcow-v3/0.1
+  timeout_sec: 30
+  default_interval: 1h
+  default_fidelity: 60
+  output_dir: v3/data/polymarket

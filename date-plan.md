@@ -16,7 +16,7 @@ Kick off `v3` as a server-owned trading system that improves on `v2` by separati
 - [x] Create a new `research/` folder with written records.
 - [x] Define a `v3` architecture centered on a server-owned decision engine.
 - [x] Start coding the `v3` scaffold.
-- [ ] Add the first real collectors.
+- [x] Add the first real collector: Polymarket historical downloader.
 - [ ] Port one baseline strategy from `v2` into `v3`.
 - [ ] Build a replay / paper mode around the new `v3` message schema.
 
@@ -42,12 +42,16 @@ Kick off `v3` as a server-owned trading system that improves on `v2` by separati
 - `research/01-strategy-map.md`
 - `research/02-api-catalog.md`
 - `research/03-v3-architecture.md`
+- `research/04-polymarket-history.md`
 - `v3/README.md`
 - `v3/config.yaml`
 - `v3/main.py`
 - starter `v3/src/` packages for transport, strategy, server, execution, data, models, and utils
+- `v3/src/data/polymarket.py`
+- `v3/scripts/download_polymarket_history.py`
 
 ## Notes
 
 - Research benchmarks recorded today are paper-reported only.
 - We still need our own 3-year backtests and paper-forward validation before trusting any module with capital.
+- The first external collector now fetches official Polymarket metadata and outcome-price history into reproducible files for later feature joins.

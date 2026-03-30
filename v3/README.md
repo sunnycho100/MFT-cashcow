@@ -38,3 +38,30 @@ The first milestone is to:
 - feed normalized signals into the server,
 - produce structured trade decisions,
 - and route those decisions through Kraken in paper / validate mode.
+
+## Polymarket Downloader
+
+`v3` now includes a first external-data collector for Polymarket history:
+
+- client module:
+  - `v3/src/data/polymarket.py`
+- CLI entrypoint:
+  - `v3/scripts/download_polymarket_history.py`
+
+Example:
+
+```bash
+python3 v3/scripts/download_polymarket_history.py \
+  --event-slug microstrategy-sell-any-bitcoin-in-2025 \
+  --interval 1d \
+  --fidelity 1440 \
+  --output v3/data/polymarket/event_microstrategy-sell-any-bitcoin-in-2025.csv
+```
+
+What it does:
+- fetches event or market metadata from the Polymarket Gamma API,
+- resolves outcome token ids from `clobTokenIds`,
+- downloads price history from the CLOB `prices-history` endpoint,
+- saves a flat CSV plus a metadata JSON companion file.
+
+This gives us a clean first step toward testing event overlays against the existing crypto candles.
