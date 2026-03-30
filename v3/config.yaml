@@ -34,6 +34,17 @@ server:
   owner: decision_engine
   persist_signal_log: true
 
+paper:
+  model_variant: auto
+  history_days: 1095
+  walkforward_summary_path: v3/data/walkforward/hybrid_overlay_walkforward_summary.json
+  artifact_path: v3/data/paper/latest_paper_cycle.json
+
+premium:
+  venue: coinbase
+  timeframe: 1h
+  output_dir: v3/data/coinbase
+
 polymarket:
   gamma_base_url: https://gamma-api.polymarket.com
   clob_base_url: https://clob.polymarket.com
