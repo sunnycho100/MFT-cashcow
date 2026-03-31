@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import argparse
-import time
-from pathlib import Path
 import sys
+import time
+import traceback
+from pathlib import Path
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from v3.src.server.paper_runtime import IntegratedPaperRuntime
 from v3.src.utils.config import load_config
+from v3.src.utils.logger import get_logger
+
+logger = get_logger("v3.scripts.run_paper_loop")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,9 +33,15 @@ def main() -> None:
 
     cycles = 0
     while True:
-        records = runtime.run_once()
+        try:
+            records = runtime.run_once()
+        except Exception:
+            logger.error(traceback.format_exc())
+            time.sleep(min(sleep_sec, 60))
+            continue
+
         cycles += 1
-        print(f"cycle={cycles} decisions={len(records)}")
+        logger.info("cycle={} decisions={}", cycles, len(records))
 
         if args.iterations and cycles >= args.iterations:
             break

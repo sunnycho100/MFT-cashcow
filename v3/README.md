@@ -43,7 +43,7 @@ Current benchmark snapshot:
 
 Important caveat:
 - this is still a research and paper-trading system
-- replay and walk-forward results are encouraging, but not enough to justify unrestricted live trading yet
+- replay and walk-forward results are enco suraging, but not enough to justify unrestricted live trading yet
 
 ## Data Sources
 
@@ -65,6 +65,52 @@ Research or experimental:
 - `src/transport/`: normalized signal transport
 - `src/utils/`: config and logging helpers
 
+## Data flow
+
+End-to-end path for one **paper cycle** (same core shape for replay research; live would swap validate-only vs placement per config):
+
+```mermaid
+flowchart TB
+  subgraph venues [External venues]
+    K_DATA["Kraken REST<br/>OHLCV + account"]
+    D["Deribit<br/>funding history"]
+    CB["Coinbase<br/>spot candles"]
+  end
+
+  subgraph data [src/data + strategy loaders]
+    R["Refresh candles<br/>join overlays"]
+    F["Feature frames<br/>funding + premium"]
+  end
+
+  subgraph brain [Strategy + server]
+    ML["ML train / predict<br/>+ calibration"]
+    TR["Trend runtime<br/>regime + gates + exits"]
+    DE["Decision engine<br/>edge + action"]
+  end
+
+  subgraph exec [src/execution]
+    GW["Kraken gateway<br/>preview / validate"]
+  end
+
+  subgraph out [Persistence]
+    ART["v3/data/paper/<br/>logs + state"]
+  end
+
+  K_DATA --> R
+  D --> R
+  CB --> R
+  R --> F
+  F --> ML
+  ML --> TR
+  TR --> DE
+  DE --> GW
+  GW --> K_DATA
+  DE --> ART
+  GW --> ART
+```
+
+**Entry points:** `python3 v3/main.py --mode paper-once` runs a single cycle; `python3 v3/scripts/run_paper_loop.py` runs the same `IntegratedPaperRuntime` on a timer (see `paper.loop_interval_sec` in `v3/config.yaml`). Host deployment options are described in [docs/server-host-plan.md](../docs/server-host-plan.md) and [deploy/README.md](../deploy/README.md).
+
 ## Key Workflows
 
 Run a one-shot paper cycle:
@@ -77,6 +123,12 @@ Run continuous paper trading:
 
 ```bash
 python3 v3/scripts/run_paper_loop.py --iterations 0
+```
+
+On a new host, prove credentials and artifacts before systemd (see [deploy/README.md](../deploy/README.md)):
+
+```bash
+python3 v3/scripts/smoke_paper_deploy.py
 ```
 
 Run walk-forward comparison:

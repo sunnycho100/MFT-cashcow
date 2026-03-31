@@ -1,0 +1,22 @@
+[Unit]
+Description=MFT Cashcow v3 paper trading loop
+Documentation=file:///opt/mft-cashcow/docs/server-host-plan.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Replace User and paths for your host.
+User=mft
+Group=mft
+WorkingDirectory=/opt/mft-cashcow
+EnvironmentFile=-/etc/mft-cashcow.env
+ExecStart=/opt/mft-cashcow/.venv/bin/python v3/scripts/run_paper_loop.py --iterations 0
+Restart=always
+RestartSec=30
+# Journald captures stdout/stderr from the process logger.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
