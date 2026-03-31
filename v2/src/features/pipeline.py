@@ -302,6 +302,21 @@ def build_features(df: pl.DataFrame) -> pl.DataFrame:
     features["vol_surge"] = v / safe_vol_sma_5  # short-term volume spike
 
     # ------------------------------------------------------------------
+    # 18. Volume z-score (24h participation proxy, no order-book data)
+    # ------------------------------------------------------------------
+    vol_mean_24 = talib.SMA(v, timeperiod=24)
+    vol_std_24 = talib.STDDEV(v, timeperiod=24)
+    safe_vol_std = np.where((vol_std_24 == 0) | np.isnan(vol_std_24), 1.0, vol_std_24)
+    features["volume_zscore_24"] = (v - vol_mean_24) / safe_vol_std
+
+    # ------------------------------------------------------------------
+    # 19. ATR ratio 14 vs 48 — shorter horizon compression vs 14/56
+    # ------------------------------------------------------------------
+    atr_48 = talib.ATR(h, lo, c, timeperiod=48)
+    safe_atr_48 = np.where((atr_48 == 0) | np.isnan(atr_48), 1.0, atr_48)
+    features["atr_ratio_14_48"] = atr_14 / safe_atr_48
+
+    # ------------------------------------------------------------------
     # Assemble into Polars DataFrame
     # ------------------------------------------------------------------
     feat_df = df.clone()

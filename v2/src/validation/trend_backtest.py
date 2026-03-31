@@ -56,12 +56,21 @@ def run_trend_backtest(
     ml_filter: bool = False,           # if True, use pred_long_prob
     ml_long_threshold: float = 0.30,   # min prob for long confirmation
     ml_short_threshold: float = 0.30,  # max prob (1 - prob) for short confirmation
+    # Dynamic sizing (optional)
+    confidence_weighted_sizing: bool = False,
+    min_confidence_risk_mult: float = 0.60,
+    max_confidence_risk_mult: float = 1.60,
 ) -> dict:
     """Run Donchian breakout trend-following backtest.
     
     Position sizing: volatility-adjusted (risk X% of equity per trade)
       trade_size = (equity * risk_per_trade) / (ATR * atr_stop_mult)
       capped at max_position_pct of equity
+
+    Optional confidence-weighted sizing:
+      if enabled and ML probabilities are available, scale risk per trade
+      between min_confidence_risk_mult and max_confidence_risk_mult based on
+      side-specific confidence.
     """
     close = df["close"].to_numpy()
     high = df["high"].to_numpy()
@@ -94,6 +103,23 @@ def run_trend_backtest(
     trail_peak = 0.0
     
     warmup = max(entry_period, exit_period, atr_period) + 1
+
+    def risk_multiplier(idx: int, side: float) -> float:
+        if not confidence_weighted_sizing:
+            return 1.0
+        if not ml_filter:
+            return 1.0
+        if idx < 0 or idx >= len(ml_prob):
+            return 1.0
+        if side > 0:
+            side_conf = float(ml_prob[idx])
+        else:
+            side_conf = float(1.0 - ml_prob[idx])
+        side_conf = min(max(side_conf, 0.0), 1.0)
+        conf_edge = min(max((side_conf - 0.5) / 0.5, 0.0), 1.0)
+        lo = min(min_confidence_risk_mult, max_confidence_risk_mult)
+        hi = max(min_confidence_risk_mult, max_confidence_risk_mult)
+        return lo + (hi - lo) * conf_edge
     
     for i in range(1, n):
         equity[i] = equity[i - 1]
@@ -172,7 +198,8 @@ def run_trend_backtest(
                     position = 0.0  # temporarily flat
                     
                     # Open reverse position
-                    risk_dollars = equity[i] * risk_per_trade
+                    scaled_risk = risk_per_trade * risk_multiplier(i, new_side)
+                    risk_dollars = equity[i] * scaled_risk
                     stop_distance = atr_stop_mult * current_atr
                     trade_size = risk_dollars / stop_distance
                     max_size = equity[i] * max_position_pct / close[i]
@@ -214,7 +241,8 @@ def run_trend_backtest(
             
             if side != 0.0:
                 # Position sizing: risk-based
-                risk_dollars = equity[i] * risk_per_trade
+                scaled_risk = risk_per_trade * risk_multiplier(i, side)
+                risk_dollars = equity[i] * scaled_risk
                 stop_distance = atr_stop_mult * current_atr
                 trade_size = risk_dollars / stop_distance
                 max_size = equity[i] * max_position_pct / close[i]

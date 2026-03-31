@@ -36,8 +36,16 @@ server:
 
 paper:
   model_variant: auto
+  trend_profile: auto
+  preferred_profile_1x: aggressive_v2_trend_balanced
+  preferred_profile_2x: aggressive_v2_trend_balanced_top2
+  enforce_drawdown_guardrail: true
+  drawdown_cap_1x: -12.0
+  drawdown_cap_2x: -20.1
+  enforce_edge_gate_when_ml_off: false
   history_days: 1095
   walkforward_summary_path: v3/data/walkforward/hybrid_overlay_walkforward_summary.json
+  return_max_summary_path: v3/data/walkforward/return_max_walkforward_summary.json
   artifact_path: v3/data/paper/latest_paper_cycle.json
   cycle_log_path: v3/data/paper/paper_cycles.jsonl
   optimization_summary_path: v3/data/optimization/funding_premium_threshold_optimization.json

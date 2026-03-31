@@ -64,6 +64,7 @@ models/
 # IDE
 .vscode/
 .idea/
+.cursor/rules/
 *.swp
 *.swo
 *~

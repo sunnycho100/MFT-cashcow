@@ -89,6 +89,18 @@ python3 v3/scripts/run_walkforward_hybrid_comparison.py \
   --step-days 60
 ```
 
+Run the full evaluation stack (hybrid walk-forward + return-max + execution stress):
+
+```bash
+python3 v3/scripts/run_evaluation_suite.py
+```
+
+Skip the slower hybrid step if you only need return-max:
+
+```bash
+python3 v3/scripts/run_evaluation_suite.py --skip-hybrid
+```
+
 Optimize calibration and thresholds:
 
 ```bash
@@ -121,6 +133,8 @@ python3 v3/scripts/download_polymarket_history.py \
 The paper path now:
 - refreshes Kraken candles
 - loads the optimized `funding_premium` profile
+- auto-selects a return-max trend profile from `return_max_walkforward_summary` based on leverage
+- applies a drawdown guardrail fallback when the preferred profile exceeds cap
 - calibrates probabilities before decision-making
 - respects breakout and exit gates instead of firing on probability alone
 - persists paper position state across cycles
@@ -150,3 +164,38 @@ It is still not fully production-ready.
 - score that log with round-trip trade metrics
 - add one more strong market-structure input, likely open interest or order-book imbalance
 - only then consider a tighter live deployment path
+
+## Return-Max Walk-Forward Results (Mar 30, 2026)
+
+New return-max comparison script:
+
+```bash
+python3 v3/scripts/run_walkforward_return_max.py
+```
+
+Optional execution stress (writes a second JSON with `1.5x` fee and `2x` slippage vs your `--fee-rate` / `--slippage-bps`):
+
+```bash
+python3 v3/scripts/run_walkforward_return_max.py --stress-execution
+```
+
+Output summaries:
+- `v3/data/walkforward/return_max_walkforward_summary.json` (default fee `0.001` per side, slippage `5` bps)
+- `v3/data/walkforward/return_max_walkforward_execution_stress.json` (when `--stress-execution` is used)
+
+Key results (12 windows, strict walk-forward, funding+premium overlays kept):
+
+- `1x` baseline (`funding_premium`): about `+0.37%` avg monthly, max DD about `-7.16%`, positive windows `5/12`
+- `1x` best return profile (`aggressive_v2_trend`): about `+1.71%` avg monthly, max DD about `-11.78%`, positive windows `7/12`
+- `1x` top-2 pair selection (`aggressive_v2_trend_mid_top2`): about `+1.70%` avg monthly with fewer trades per window
+
+- `2x` baseline (`funding_premium`): about `+0.70%` avg monthly, max DD about `-13.98%`, positive windows `5/12`
+- `2x` objective winner (`aggressive_v2_trend_mid_top2`): about `+3.37%` avg monthly, max DD about `-21.37%`, positive windows `7/12`
+- `2x` drawdown-cap-friendly top-2 (`aggressive_v2_trend_balanced_top2`): about `+3.15%` avg monthly, max DD about `-20.04%`, positive windows `7/12`
+
+Execution stress snapshot (`fee` `0.0015`, slippage `10` bps): top profiles remain positive but monthly returns compress (for example `2x` winner near `+2.17%` on `aggressive_v2_trend_balanced_top2`).
+
+Interpretation:
+- return-max `v2` trend logic materially outperforms the current robust baseline
+- pair selection and execution-cost stress tests are now part of the standard evaluation loop
+- `1x` still needs another alpha layer to reach a sustained `3-5%` monthly target range
