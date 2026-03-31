@@ -151,6 +151,33 @@ Ensure the virtualenv matches production (e.g. `source .venv/bin/activate`) and 
 
 ---
 
+## VPS bootstrap (step-by-step)
+
+The fastest path from "empty VPS" to "paper loop running":
+
+1. **Provision a VPS** — 1 vCPU, 1 GB RAM, Ubuntu 24.04 LTS, ~$4–6/mo (Hetzner, DigitalOcean, Linode, Lightsail, etc.).
+2. **SSH in as root** and run the automated bootstrap:
+   ```bash
+   git clone https://github.com/sunnycho100/MFT-cashcow.git /opt/mft-cashcow
+   bash /opt/mft-cashcow/deploy/scripts/vps-setup.sh
+   ```
+3. **Add your SSH key** to `/home/mft/.ssh/authorized_keys`.
+4. **Fill in API keys** — `sudo nano /etc/mft-cashcow.env`.
+5. **Smoke test** — run as the `mft` user, confirm three cycles pass.
+6. **Enable systemd** — `sudo systemctl enable --now mft-cashcow-paper.service`.
+
+The setup script handles: deploy user, SSH hardening, UFW, Python 3.11, TA-Lib, virtualenv, systemd unit, log rotation. Full details and Docker alternative in **[deploy/README.md §7](../deploy/README.md)**.
+
+---
+
 ## Deploy artifacts in this repo
 
-For **`env.example`**, a **systemd** unit template, and copy-paste install steps, see **[deploy/README.md](../deploy/README.md)**.
+| File | Purpose |
+|------|---------|
+| `deploy/scripts/vps-setup.sh` | Automated VPS bootstrap script |
+| `deploy/Dockerfile` | Container image for the paper loop |
+| `deploy/docker-compose.yml` | Compose file (bind-mount data, env from `.env`) |
+| `deploy/env.example` | Template for secrets |
+| `deploy/systemd/mft-cashcow-paper.service` | systemd unit for direct host deployment |
+
+For copy-paste install steps, see **[deploy/README.md](../deploy/README.md)**.
