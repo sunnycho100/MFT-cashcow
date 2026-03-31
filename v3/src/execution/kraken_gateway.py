@@ -86,7 +86,11 @@ class KrakenExecutionGateway:
                 validate=True,
             )
 
-        side = "buy" if decision.action == TradeAction.BUY else "sell"
+        if decision.action == TradeAction.CLOSE:
+            close_side = str(decision.metadata.get("close_side", "long")).lower()
+            side = "sell" if close_side == "long" else "buy"
+        else:
+            side = "buy" if decision.action == TradeAction.BUY else "sell"
         volume = 0.0 if reference_price <= 0 else decision.size_fraction / reference_price
         leverage = self.default_leverage if self.use_margin else None
 

@@ -43,6 +43,7 @@ class DecisionEngine:
         return [decision] if decision is not None else []
 
     def _decide(self, pair: str, snapshot: PairSnapshot) -> TradeDecision | None:
+        market_state_signal = snapshot.latest.get(SignalType.MARKET_STATE)
         regime_signal = snapshot.latest.get(SignalType.REGIME)
         edge_signal = snapshot.latest.get(SignalType.EDGE)
         risk_signal = snapshot.latest.get(SignalType.RISK)
@@ -63,29 +64,85 @@ class DecisionEngine:
         regime = str(regime_signal.payload.get("regime", "unknown")).lower()
         edge_score = float(edge_signal.payload.get("score", 0.5))
         event_multiplier = 1.0
+        market_state = market_state_signal.payload if market_state_signal is not None else {}
+        market_ready = bool(market_state.get("ready", market_state_signal is None))
+        position_side = int(market_state.get("position_side", 0) or 0)
+        long_breakout = bool(market_state.get("long_breakout", False))
+        short_breakout = bool(market_state.get("short_breakout", False))
+        exit_long = bool(market_state.get("exit_long", False))
+        exit_short = bool(market_state.get("exit_short", False))
 
         if event_signal is not None:
             event_multiplier = float(event_signal.payload.get("size_multiplier", 1.0))
 
-        if regime == "bull" and edge_score >= self.long_score_threshold:
+        if not market_ready:
+            return TradeDecision(
+                pair=pair,
+                action=TradeAction.HOLD,
+                confidence=max(edge_score, 1.0 - edge_score),
+                reason="market state not warmed up yet",
+                metadata={"regime": regime, "edge_score": edge_score},
+            )
+
+        if position_side > 0:
+            if exit_long:
+                return TradeDecision(
+                    pair=pair,
+                    action=TradeAction.CLOSE,
+                    confidence=max(edge_score, 1.0 - edge_score),
+                    reason="long exit gate triggered",
+                    order_type=self.default_order_type,
+                    size_fraction=self.base_size_fraction * event_multiplier,
+                    leverage=self.default_leverage,
+                    metadata={"regime": regime, "edge_score": edge_score, "close_side": "long"},
+                )
+            return TradeDecision(
+                pair=pair,
+                action=TradeAction.HOLD,
+                confidence=max(edge_score, 1.0 - edge_score),
+                reason="long position active; no exit signal",
+                metadata={"regime": regime, "edge_score": edge_score},
+            )
+
+        if position_side < 0:
+            if exit_short:
+                return TradeDecision(
+                    pair=pair,
+                    action=TradeAction.CLOSE,
+                    confidence=max(edge_score, 1.0 - edge_score),
+                    reason="short exit gate triggered",
+                    order_type=self.default_order_type,
+                    size_fraction=self.base_size_fraction * event_multiplier,
+                    leverage=self.default_leverage,
+                    metadata={"regime": regime, "edge_score": edge_score, "close_side": "short"},
+                )
+            return TradeDecision(
+                pair=pair,
+                action=TradeAction.HOLD,
+                confidence=max(edge_score, 1.0 - edge_score),
+                reason="short position active; no exit signal",
+                metadata={"regime": regime, "edge_score": edge_score},
+            )
+
+        if regime == "bull" and long_breakout and edge_score >= self.long_score_threshold:
             return TradeDecision(
                 pair=pair,
                 action=TradeAction.BUY,
                 confidence=edge_score,
-                reason="bull regime with strong edge score",
+                reason="bull breakout with strong edge score",
                 order_type=self.default_order_type,
                 size_fraction=self.base_size_fraction * event_multiplier,
                 leverage=self.default_leverage,
                 metadata={"regime": regime, "edge_score": edge_score},
             )
 
-        if regime == "bear" and edge_score <= self.short_score_threshold:
+        if regime == "bear" and short_breakout and edge_score <= self.short_score_threshold:
             if self.short_requires_bear_regime:
                 return TradeDecision(
                     pair=pair,
                     action=TradeAction.SELL,
                     confidence=1.0 - edge_score,
-                    reason="bear regime with short gate satisfied",
+                    reason="bear breakout with short gate satisfied",
                     order_type=self.default_order_type,
                     size_fraction=self.base_size_fraction * event_multiplier,
                     leverage=self.default_leverage,
@@ -96,6 +153,6 @@ class DecisionEngine:
             pair=pair,
             action=TradeAction.HOLD,
             confidence=max(edge_score, 1.0 - edge_score),
-            reason="signals not strong enough for execution",
+            reason="no aligned breakout execution signal",
             metadata={"regime": regime, "edge_score": edge_score},
         )

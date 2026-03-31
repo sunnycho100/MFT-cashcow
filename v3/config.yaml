@@ -39,6 +39,16 @@ paper:
   history_days: 1095
   walkforward_summary_path: v3/data/walkforward/hybrid_overlay_walkforward_summary.json
   artifact_path: v3/data/paper/latest_paper_cycle.json
+  cycle_log_path: v3/data/paper/paper_cycles.jsonl
+  optimization_summary_path: v3/data/optimization/funding_premium_threshold_optimization.json
+  use_optimized_thresholds: true
+  skip_if_same_candle: true
+  loop_interval_sec: 300
+
+optimization:
+  default_calibration_method: isotonic
+  calibration_fraction: 0.2
+  summary_path: v3/data/optimization/funding_premium_threshold_optimization.json
 
 premium:
   venue: coinbase

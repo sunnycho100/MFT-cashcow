@@ -16,10 +16,10 @@ from v2.src.features.pipeline import build_features, get_feature_names
 from v2.src.models.lgbm_model import LGBMModel
 from v2.src.utils.config import load_config as load_v2_config
 from v2.src.validation.trend_backtest import run_trend_backtest
-from v3.src.data.deribit import DeribitClient, fetch_funding_history_paginated, write_funding_csv, write_metadata_json as write_deribit_metadata_json
+from v3.src.data.deribit import DeribitClient, DeribitFundingPoint, fetch_funding_history_paginated, write_funding_csv, write_metadata_json as write_deribit_metadata_json
 from v3.src.data.deribit_overlay import add_cross_pair_funding_features, join_pair_funding, load_funding_csv, summarize_funding_history
 from v3.src.data.premium_overlay import add_cross_pair_premium_features, join_pair_premium, summarize_premium_candles
-from v3.src.data.venue_candles import VenueCandleClient, load_candles_csv, summarize_candles, write_candles_csv, write_metadata_json as write_venue_metadata_json
+from v3.src.data.venue_candles import VenueCandle, VenueCandleClient, load_candles_csv, summarize_candles, write_candles_csv, write_metadata_json as write_venue_metadata_json
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 HISTORY_TOLERANCE_MS = 3_600_000
@@ -104,6 +104,20 @@ def refresh_latest_candles(config: dict, timeframe: str = "1h") -> dict[str, int
         store.close()
 
 
+def load_latest_candle_timestamps(config: dict, timeframe: str = "1h") -> dict[str, str]:
+    pairs = config.get("trading", {}).get("pairs", ["BTC/USDT", "ETH/USDT", "SOL/USDT"])
+    store = DataStore(config)
+    try:
+        latest = {}
+        for pair in pairs:
+            timestamp = store.get_latest_timestamp(pair, timeframe)
+            if timestamp is not None:
+                latest[pair] = str(timestamp)
+        return latest
+    finally:
+        store.close()
+
+
 def load_base_feature_frames_with_refresh(config: dict, days: int, refresh_latest: bool = False) -> dict[str, pl.DataFrame]:
     if refresh_latest:
         refresh_latest_candles(config, timeframe="1h")
@@ -126,6 +140,56 @@ def get_frame_bounds(pair_frames: dict[str, pl.DataFrame]) -> tuple[int, int]:
     return start_ms, end_ms
 
 
+def _frame_to_funding_points(frame: pl.DataFrame, instrument_name: str) -> list[DeribitFundingPoint]:
+    if frame.is_empty():
+        return []
+    points = []
+    for row in frame.to_dicts():
+        points.append(
+            DeribitFundingPoint(
+                instrument_name=instrument_name,
+                timestamp_ms=int(row["timestamp_ms"]),
+                index_price=float(row["index_price"]),
+                prev_index_price=float(row["prev_index_price"]),
+                interest_1h=float(row["interest_1h"]),
+                interest_8h=float(row["interest_8h"]),
+            )
+        )
+    return points
+
+
+def _merge_funding_points(existing: list[DeribitFundingPoint], new_rows: list[DeribitFundingPoint]) -> list[DeribitFundingPoint]:
+    dedup = {row.timestamp_ms: row for row in existing}
+    for row in new_rows:
+        dedup[row.timestamp_ms] = row
+    return [dedup[key] for key in sorted(dedup)]
+
+
+def _frame_to_venue_candles(frame: pl.DataFrame) -> list[VenueCandle]:
+    if frame.is_empty():
+        return []
+    rows = []
+    for row in frame.to_dicts():
+        rows.append(
+            VenueCandle(
+                timestamp_ms=int(row["timestamp_ms"]),
+                open=float(row["open"]),
+                high=float(row["high"]),
+                low=float(row["low"]),
+                close=float(row["close"]),
+                volume=float(row["volume"]),
+            )
+        )
+    return rows
+
+
+def _merge_venue_candles(existing: list[VenueCandle], new_rows: list[VenueCandle]) -> list[VenueCandle]:
+    dedup = {row.timestamp_ms: row for row in existing}
+    for row in new_rows:
+        dedup[row.timestamp_ms] = row
+    return [dedup[key] for key in sorted(dedup)]
+
+
 def ensure_deribit_cache(pair_name: str, instrument_name: str, start_ms: int, end_ms: int, chunk_days: int) -> tuple[pl.DataFrame, dict]:
     out_dir = REPO_ROOT / "v3/data/deribit"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -144,15 +208,47 @@ def ensure_deribit_cache(pair_name: str, instrument_name: str, start_ms: int, en
             and summary["last_ts"] >= end_ms - HISTORY_TOLERANCE_MS
         ):
             return frame, summary
+        existing_rows = _frame_to_funding_points(frame, instrument_name)
+    else:
+        frame = pl.DataFrame()
+        summary = {"rows": 0, "first_ts": None, "last_ts": None}
+        existing_rows = []
 
     client = DeribitClient()
-    rows = fetch_funding_history_paginated(
-        client=client,
-        instrument_name=instrument_name,
-        start_timestamp_ms=start_ms,
-        end_timestamp_ms=end_ms,
-        chunk_days=chunk_days,
-    )
+    fetched_rows = []
+    if summary["rows"] == 0:
+        fetched_rows.extend(
+            fetch_funding_history_paginated(
+                client=client,
+                instrument_name=instrument_name,
+                start_timestamp_ms=start_ms,
+                end_timestamp_ms=end_ms,
+                chunk_days=chunk_days,
+            )
+        )
+    else:
+        if summary["first_ts"] is not None and summary["first_ts"] > start_ms + HISTORY_TOLERANCE_MS:
+            fetched_rows.extend(
+                fetch_funding_history_paginated(
+                    client=client,
+                    instrument_name=instrument_name,
+                    start_timestamp_ms=start_ms,
+                    end_timestamp_ms=int(summary["first_ts"]),
+                    chunk_days=chunk_days,
+                )
+            )
+        if summary["last_ts"] is not None and summary["last_ts"] < end_ms - HISTORY_TOLERANCE_MS:
+            fetched_rows.extend(
+                fetch_funding_history_paginated(
+                    client=client,
+                    instrument_name=instrument_name,
+                    start_timestamp_ms=int(summary["last_ts"]) + 3_600_000,
+                    end_timestamp_ms=end_ms,
+                    chunk_days=chunk_days,
+                )
+            )
+
+    rows = _merge_funding_points(existing_rows, fetched_rows)
     write_funding_csv(rows, csv_path)
     metadata = {
         "pair": pair_name,
@@ -163,8 +259,8 @@ def ensure_deribit_cache(pair_name: str, instrument_name: str, start_ms: int, en
         "fetched_at_utc": datetime.now(tz=UTC).isoformat(),
     }
     write_deribit_metadata_json(metadata, meta_path)
-    frame = load_funding_csv(csv_path)
-    return frame, summarize_funding_history(frame)
+    merged = load_funding_csv(csv_path)
+    return merged, summarize_funding_history(merged)
 
 
 def ensure_coinbase_cache(pair_name: str, venue_pair: str, start_ms: int, end_ms: int, timeframe: str) -> tuple[pl.DataFrame, dict]:
@@ -185,14 +281,44 @@ def ensure_coinbase_cache(pair_name: str, venue_pair: str, start_ms: int, end_ms
             and summary["last_ts"] >= end_ms - HISTORY_TOLERANCE_MS
         ):
             return frame, summary
+        existing_rows = _frame_to_venue_candles(frame)
+    else:
+        frame = pl.DataFrame()
+        summary = {"rows": 0, "first_ts": None, "last_ts": None}
+        existing_rows = []
 
     client = VenueCandleClient(exchange_id="coinbase")
-    rows = client.fetch_ohlcv_history(
-        pair=venue_pair,
-        timeframe=timeframe,
-        start_timestamp_ms=start_ms,
-        end_timestamp_ms=end_ms,
-    )
+    fetched_rows = []
+    if summary["rows"] == 0:
+        fetched_rows.extend(
+            client.fetch_ohlcv_history(
+                pair=venue_pair,
+                timeframe=timeframe,
+                start_timestamp_ms=start_ms,
+                end_timestamp_ms=end_ms,
+            )
+        )
+    else:
+        if summary["first_ts"] is not None and summary["first_ts"] > start_ms + HISTORY_TOLERANCE_MS:
+            fetched_rows.extend(
+                client.fetch_ohlcv_history(
+                    pair=venue_pair,
+                    timeframe=timeframe,
+                    start_timestamp_ms=start_ms,
+                    end_timestamp_ms=int(summary["first_ts"]),
+                )
+            )
+        if summary["last_ts"] is not None and summary["last_ts"] < end_ms - HISTORY_TOLERANCE_MS:
+            fetched_rows.extend(
+                client.fetch_ohlcv_history(
+                    pair=venue_pair,
+                    timeframe=timeframe,
+                    start_timestamp_ms=int(summary["last_ts"]) + 3_600_000,
+                    end_timestamp_ms=end_ms,
+                )
+            )
+
+    rows = _merge_venue_candles(existing_rows, fetched_rows)
     write_candles_csv(rows, csv_path)
     metadata = {
         "pair": pair_name,
@@ -205,8 +331,8 @@ def ensure_coinbase_cache(pair_name: str, venue_pair: str, start_ms: int, end_ms
         "fetched_at_utc": datetime.now(tz=UTC).isoformat(),
     }
     write_venue_metadata_json(metadata, meta_path)
-    frame = load_candles_csv(csv_path)
-    return frame, summarize_premium_candles(frame)
+    merged = load_candles_csv(csv_path)
+    return merged, summarize_premium_candles(merged)
 
 
 def build_funding_overlay_frames(base_frames: dict[str, pl.DataFrame], chunk_days: int = 31) -> tuple[dict[str, pl.DataFrame], list[dict[str, Any]]]:
