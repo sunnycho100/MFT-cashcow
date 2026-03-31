@@ -1,6 +1,7 @@
-# Environment variables
+# Environment variables (never commit secrets)
 .env
-.env.local
+.env.*
+!.env.example
 
 # Python
 __pycache__/
@@ -85,3 +86,30 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Ruff, tox, type checkers
+.ruff_cache/
+.tox/
+.nox/
+.pytype/
+.pyre/
+
+# Coverage / tests
+coverage.xml
+*.cover
+.hypothesis/
+
+# TLS / keys (never commit)
+*.pem
+*.p12
+id_rsa
+id_ed25519
+id_ecdsa
+
+# Direnv (often contains export lines with secrets)
+.envrc
+
+# OS / editor
+Thumbs.db
+ehthumbs.db
+Desktop.ini

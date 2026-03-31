@@ -1,0 +1,39 @@
+# v0-mini: EMA crossover (golden cross / dead cross) on spot OHLCV.
+# EMA columns are not stored in DuckDB — they are computed from close and
+# optionally exported to v0-mini/data/ (see scripts/run_v0_mini.py).
+
+pairs:
+  - BTC/USDT
+  - ETH/USDT
+  - SOL/USDT
+
+timeframe: "1h"
+
+# Classic crossover: fast vs slow; trend filter uses the long EMA.
+ema:
+  fast: 30
+  slow: 50
+  trend: 120
+
+# Entry: golden cross (fast crosses above slow) while close > EMA(trend).
+# Exit: dead cross (fast crosses below slow).
+
+# Extra strategy params (see scripts/run_v0_mini.py).
+strategies:
+  price_vs_ema:
+    signal: 50   # close vs EMA(50) golden/dead
+    trend: 120   # require close > EMA(120) on entry
+  ema_triple:
+    fast: 30     # filter: close > EMA(30) when EMA(50) crosses EMA(120)
+    mid: 50
+    slow: 120
+
+backtest:
+  initial_capital: 100000.0
+  fee_rate: 0.001
+  slippage_bps: 5.0
+
+paths:
+  v3_coinbase_csv_glob: "v3/data/coinbase/ohlcv_*_USD_1h.csv"
+  v2_duckdb: "v2/data/v2.duckdb"
+  derived_output_dir: "v0-mini/data"

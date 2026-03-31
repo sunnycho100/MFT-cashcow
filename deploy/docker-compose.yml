@@ -1,0 +1,16 @@
+# Run from deploy/ (paths are relative to this file):
+#   cd deploy && docker compose up -d --build
+#
+# Requires repo-root .env with KRAKEN_API_KEY / KRAKEN_API_SECRET (or set env_file).
+
+services:
+  paper:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    env_file:
+      - ../.env
+    volumes:
+      - ../v3/data:/app/v3/data
+      - ../v2/data:/app/v2/data
+    restart: unless-stopped
